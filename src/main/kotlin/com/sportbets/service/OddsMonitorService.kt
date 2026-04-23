@@ -45,10 +45,10 @@ class OddsMonitorService(
      */
     @Transactional
     fun capturePreMatchOdds() {
-        val cutoff = LocalDateTime.now().plusMinutes(60)
-        val upcoming = matchRepository.findByStatusAndMatchDateBetween(
-            MatchStatus.UPCOMING, LocalDateTime.now(), cutoff
-        )
+        // Capture pre-match baseline for all upcoming matches that don't have one yet.
+        // No time window restriction — odds are captured as soon as the match is synced,
+        // so a baseline exists even if the app restarts close to or after kickoff.
+        val upcoming = matchRepository.findByStatus(MatchStatus.UPCOMING)
         for (match in upcoming) {
             if (oddsSnapshotRepository.findByMatchIdAndIsPreMatchTrue(match.id).isEmpty()) {
                 try {

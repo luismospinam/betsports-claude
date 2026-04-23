@@ -64,17 +64,17 @@ class BetplayApiClient(
         return try {
             log.debug("GET {}", url)
             val request = Request.Builder().url(url).get().build()
-            val response = httpClient.newCall(request).execute()
+            httpClient.newCall(request).execute().use { response ->
+                if (response.code == 404) throw EventNotFoundException(url)
 
-            if (response.code == 404) throw EventNotFoundException(url)
+                if (!response.isSuccessful) {
+                    log.warn("Betplay API returned {} for {}", response.code, url)
+                    return null
+                }
 
-            if (!response.isSuccessful) {
-                log.warn("Betplay API returned {} for {}", response.code, url)
-                return null
+                val body = response.body?.string() ?: return null
+                objectMapper.readTree(body)
             }
-
-            val body = response.body?.string() ?: return null
-            objectMapper.readTree(body)
         } catch (e: EventNotFoundException) {
             throw e
         } catch (e: Exception) {
