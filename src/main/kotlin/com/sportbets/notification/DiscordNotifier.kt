@@ -70,9 +70,22 @@ class DiscordNotifier(
     private fun buildPayload(alert: BettingAlert): Map<String, Any> {
         val match = alert.match
 
+        val betStatusLabel = when (alert.betStatus) {
+            "PLACED"  -> "✅ Placed"
+            "DRY_RUN" -> "🔕 Dry run"
+            "FAILED"  -> "❌ Failed"
+            "SKIPPED" -> "⚠️ Skipped"
+            else      -> "—"
+        }
+        val embedColor = when (alert.betStatus) {
+            "PLACED"  -> 0x2ECC71  // green
+            "FAILED"  -> 0xE74C3C  // red
+            else      -> 0xF5A623  // orange (dry-run / skipped)
+        }
+
         val embed = mapOf(
             "title"       to "Bet Opportunity Detected!",
-            "color"       to 0xF5A623,
+            "color"       to embedColor,
             "description" to alert.message,
             "fields"      to listOf(
                 mapOf("name" to "Match",         "value" to "${match.homeTeam} vs ${match.awayTeam}", "inline" to true),
@@ -82,6 +95,8 @@ class DiscordNotifier(
                 mapOf("name" to "Current Odds",  "value" to "%.2f".format(alert.currentOdds),          "inline" to true),
                 mapOf("name" to "Odds Rise",     "value" to "+%.1f%%".format(alert.oddsIncreasePct),   "inline" to true),
                 mapOf("name" to "Score",         "value" to (alert.scoreAtAlert ?: "N/A"),             "inline" to true),
+                mapOf("name" to "Bet Status",    "value" to betStatusLabel,                            "inline" to true),
+                mapOf("name" to "Stake",         "value" to if (alert.betPlaced == true || alert.betStatus == "DRY_RUN") "1,000 COP" else "—", "inline" to true),
             ),
             "footer"    to mapOf("text" to "SportBets Monitor"),
             "timestamp" to alert.triggeredAt.toString() + "Z"

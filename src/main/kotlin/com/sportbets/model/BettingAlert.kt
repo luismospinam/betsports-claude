@@ -43,6 +43,14 @@ data class BettingAlert(
     @Column(name = "notified", nullable = false)
     val notified: Boolean = false,
 
+    /** Whether a real bet was successfully placed in the browser */
+    @Column(name = "bet_placed")
+    val betPlaced: Boolean? = null,
+
+    /** PLACED / DRY_RUN / FAILED / SKIPPED */
+    @Column(name = "bet_status", length = 50)
+    val betStatus: String? = null,
+
     @Column(name = "triggered_at", nullable = false)
     val triggeredAt: LocalDateTime = LocalDateTime.now()
 )

@@ -142,7 +142,22 @@ class OddsMonitorService(
                 "${current.homeScore}-${current.awayScore}" else "?"
             val minute = current.matchMinute?.let { "${it}'" } ?: "?"
 
-            val message = buildAlertMessage(match, favoriteSide, baselineOdds, currentOdds, risePct, score, minute)
+            val outcomeId = when (favoriteSide) {
+                "HOME" -> current.homeOutcomeId
+                "AWAY" -> current.awayOutcomeId
+                else   -> current.drawOutcomeId
+            }
+
+            // Place bet first so the result is included in the alert message
+            val betResult = betPlacerService.placeBet(
+                outcomeId    = outcomeId,
+                oddsDecimal  = currentOdds,
+                matchDesc    = "${match.homeTeam} vs ${match.awayTeam} ($score $minute)",
+                externalId   = match.externalId,
+                favoriteSide = favoriteSide,
+            )
+
+            val message = buildAlertMessage(match, favoriteSide, baselineOdds, currentOdds, risePct, score, minute, betResult)
 
             val alert = BettingAlert(
                 match            = match,
@@ -153,23 +168,17 @@ class OddsMonitorService(
                 scoreAtAlert     = score,
                 message          = message,
                 notified         = false,
+                betPlaced        = betResult is BetResult.Placed,
+                betStatus        = when (betResult) {
+                    is BetResult.Placed -> "PLACED"
+                    is BetResult.DryRun -> "DRY_RUN"
+                    BetResult.Failed    -> "FAILED"
+                    BetResult.Skipped   -> "SKIPPED"
+                },
                 triggeredAt      = LocalDateTime.now()
             )
             bettingAlertRepository.save(alert)
             log.info("ALERT: {}", message)
-
-            val outcomeId = when (favoriteSide) {
-                "HOME" -> current.homeOutcomeId
-                "AWAY" -> current.awayOutcomeId
-                else   -> current.drawOutcomeId
-            }
-            betPlacerService.placeBet(
-                outcomeId    = outcomeId,
-                oddsDecimal  = currentOdds,
-                matchDesc    = "${match.homeTeam} vs ${match.awayTeam} ($score $minute)",
-                externalId   = match.externalId,
-                favoriteSide = favoriteSide,
-            )
         }
     }
 
@@ -259,12 +268,19 @@ class OddsMonitorService(
         currentOdds: Double,
         risePct: Double,
         score: String,
-        minute: String
+        minute: String,
+        betResult: BetResult,
     ): String {
         val favoriteTeam = when (favoriteSide) {
             "HOME" -> match.homeTeam
             "AWAY" -> match.awayTeam
             else   -> "Draw"
+        }
+        val betLine = when (betResult) {
+            is BetResult.Placed -> "✅ Bet placed: ${"%,d".format(betResult.stake)} COP @ ${"%.2f".format(currentOdds)}"
+            is BetResult.DryRun -> "🔕 Dry run — ${"%,d".format(betResult.stake)} COP @ ${"%.2f".format(currentOdds)} (enable betting to activate)"
+            BetResult.Failed    -> "❌ Bet failed — check browser/CDP logs"
+            BetResult.Skipped   -> "⚠️ Bet skipped — outcome ID not available"
         }
         return """
             ⚽ BET OPPORTUNITY DETECTED
@@ -272,6 +288,7 @@ class OddsMonitorService(
             📊 Score: $score  |  ⏱️ $minute
             🎯 Suggested bet: $favoriteSide ($favoriteTeam)
             📈 Odds: ${"%.2f".format(baselineOdds)} → ${"%.2f".format(currentOdds)} (+${"%.1f".format(risePct)}%)
+            $betLine
             🕒 ${LocalDateTime.now()}
         """.trimIndent()
     }
