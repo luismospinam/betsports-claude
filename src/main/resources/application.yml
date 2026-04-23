@@ -1,0 +1,90 @@
+# ============================================================
+# SportBets — application configuration
+# ============================================================
+
+spring:
+  application:
+    name: sport-bets
+
+  # No HTTP server — this is a background service only
+  main:
+    web-application-type: none
+
+
+  # docker run --name sportbets -e POSTGRES_PASSWORD=YOUR_DB_PASSWORD -d -p 5432:5432 -v /your/path/db:/var/lib/postgresql/data  postgres -c log_statement=all
+  datasource:
+    url: jdbc:postgresql://localhost:5432/sportbets
+    username: postgres
+    password: YOUR_DB_PASSWORD
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate         # Flyway handles schema; Hibernate just validates
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+# ============================================================
+# Betplay API settings
+# ⚠️  Fill these in after running the discovery tool:
+#     ./gradlew bootRun --args="--spring.profiles.active=discover"
+# ============================================================
+betplay:
+  api:
+    base-url: https://na-offering-api.kambicdn.net
+    events-path: /offering/v2018/betplay/listView/football/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+    odds-path: /offering/v2018/betplay/betoffer/event/{eventId}.json?lang=es_CO&market=CO&client_id=2&channel_id=1&includeParticipants=true
+    live-path: /offering/v2018/betplay/listView/football/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+
+  monitor:
+    # How much the favorite's odds must rise (%) to trigger an alert
+    odds-rise-threshold-pct: 20.0
+    # Maximum alerts to send per match (prevents spam)
+    max-alerts-per-match: 3
+
+  scheduler:
+    # Sync upcoming matches from Betplay (every 4 hours = 14400000 ms)
+    match-sync-ms: 14400000
+    # Check if any matches have gone LIVE (every 60 seconds)
+    live-sync-ms: 60000
+    # Capture pre-match baseline odds (every 5 minutes = 300000 ms)
+    pre-match-odds-ms: 300000
+    # Poll live match odds (every 45 seconds)
+    live-odds-ms: 45000
+    # Drain Discord alert queue (every 30 seconds)
+    discord-send-ms: 30000
+
+# ============================================================
+# Discord webhook
+# How to get your webhook URL:
+#   1. Open Discord → your server → channel settings
+#   2. Integrations → Webhooks → Create Webhook
+#   3. Copy Webhook URL and paste it below
+# ============================================================
+discord:
+  webhook:
+    enabled: true
+    url: YOUR_DISCORD_WEBHOOK_URL
+  bot:
+    token: "YOUR_DISCORD_BOT_TOKEN"
+    channel-id: "YOUR_DISCORD_CHANNEL_ID"
+    mention-id: "YOUR_DISCORD_USER_ID"
+
+# ============================================================
+# Logging
+# ============================================================
+logging:
+  level:
+    com.sportbets: INFO
+    org.springframework: WARN
+    org.hibernate: WARN
+  pattern:
+    console: "%d{HH:mm:ss} [%-5level] %logger{36} - %msg%n"

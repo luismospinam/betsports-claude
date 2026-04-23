@@ -1,0 +1,39 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+out/
+
+# Kotlin
+.kotlin/
+
+# Compiled classes & JARs
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Discovery output (contains intercepted API URLs — not sensitive but not needed in git)
+betplay-api-discovery.txt
+
+# PostgreSQL data volume (mounted via Docker)
+/db/
+
+# Claude Code session memory
+.claude/
+
+# Application local overrides (if you create one for local secrets)
+src/main/resources/application-local.yml

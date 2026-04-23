@@ -1,0 +1,237 @@
+package com.sportbets.service
+
+import com.fasterxml.jackson.databind.JsonNode
+import com.sportbets.model.BettingAlert
+import com.sportbets.model.Match
+import com.sportbets.model.MatchStatus
+import com.sportbets.model.OddsSnapshot
+import com.sportbets.repository.BettingAlertRepository
+import com.sportbets.repository.MatchRepository
+import com.sportbets.repository.OddsSnapshotRepository
+import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDateTime
+
+/**
+ * Core odds monitoring logic.
+ *
+ * For each LIVE match:
+ *  1. Fetch current odds from Betplay/Kambi
+ *  2. Store an OddsSnapshot
+ *  3. Compare with the pre-match baseline
+ *  4. If the favorite's odds have risen above [oddsRiseThresholdPct], fire an alert
+ *
+ * Kambi odds response: {"betOffers": [{"criterion": {"englishLabel": "Full Time"}, "outcomes": [...]}]}
+ * Outcome types: OT_ONE (home), OT_CROSS (draw), OT_TWO (away)
+ * Odds are in milliunits — divide by 1000 for decimal odds (e.g. 1850 → 1.85)
+ */
+@Service
+class OddsMonitorService(
+    private val apiClient: BetplayApiClient,
+    private val matchRepository: MatchRepository,
+    private val oddsSnapshotRepository: OddsSnapshotRepository,
+    private val bettingAlertRepository: BettingAlertRepository,
+    @Value("\${betplay.monitor.odds-rise-threshold-pct:20.0}") private val oddsRiseThresholdPct: Double,
+    @Value("\${betplay.monitor.max-alerts-per-match:3}") private val maxAlertsPerMatch: Int,
+) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
+    /**
+     * Called by scheduler — captures pre-match odds for UPCOMING matches
+     * that are close to kickoff (within 30 minutes).
+     */
+    @Transactional
+    fun capturePreMatchOdds() {
+        val cutoff = LocalDateTime.now().plusMinutes(60)
+        val upcoming = matchRepository.findByStatusAndMatchDateBetween(
+            MatchStatus.UPCOMING, LocalDateTime.now(), cutoff
+        )
+        for (match in upcoming) {
+            if (oddsSnapshotRepository.findByMatchIdAndIsPreMatchTrue(match.id).isEmpty()) {
+                try {
+                    captureOddsSnapshot(match, isPreMatch = true)
+                    log.info("Captured pre-match odds for {} vs {}", match.homeTeam, match.awayTeam)
+                } catch (e: EventNotFoundException) {
+                    matchRepository.save(match.copy(status = MatchStatus.FINISHED, updatedAt = LocalDateTime.now()))
+                    log.info("Match {} vs {} no longer exists in Kambi - marked as FINISHED", match.homeTeam, match.awayTeam)
+                }
+            }
+        }
+    }
+
+    /**
+     * Called by scheduler — polls in-play endpoint once, then processes all tracked live matches.
+     * Using in-play.json instead of per-match betoffer calls gives us odds + score + minute in one request.
+     */
+    @Transactional
+    fun monitorLiveOdds() {
+        val liveMatches = matchRepository.findByStatus(MatchStatus.LIVE)
+        if (liveMatches.isEmpty()) {
+            log.debug("No live matches to monitor")
+            return
+        }
+
+        val liveJson = apiClient.fetchLiveMatches()
+        val liveDataByEventId: Map<String, com.fasterxml.jackson.databind.JsonNode> =
+            liveJson?.get("events")
+                ?.filter { it.has("liveData") }
+                ?.associateBy { it["event"]["id"].asText() }
+                ?: emptyMap()
+
+        log.info("Monitoring {} live match(es)...", liveMatches.size)
+        for (match in liveMatches) {
+            try {
+                processLiveMatch(match, liveDataByEventId[match.externalId])
+            } catch (e: EventNotFoundException) {
+                matchRepository.save(match.copy(status = MatchStatus.FINISHED, updatedAt = LocalDateTime.now()))
+                log.info("Live match {} vs {} no longer exists in Kambi - marked as FINISHED", match.homeTeam, match.awayTeam)
+            }
+        }
+    }
+
+    private fun processLiveMatch(match: Match, liveWrapper: com.fasterxml.jackson.databind.JsonNode?) {
+        val snapshot = captureOddsSnapshot(match, isPreMatch = false, liveWrapper = liveWrapper) ?: return
+
+        // Skip alerting if too many alerts already sent for this match
+        val existingAlerts = bettingAlertRepository.countByMatchId(match.id)
+        if (existingAlerts >= maxAlertsPerMatch) {
+            log.debug("Max alerts ({}) reached for match {}", maxAlertsPerMatch, match.id)
+            return
+        }
+
+        // Get the pre-match baseline
+        val baselines = oddsSnapshotRepository.findByMatchIdAndIsPreMatchTrue(match.id)
+        if (baselines.isEmpty()) {
+            log.warn("No pre-match baseline for match {} vs {}. Skipping alert check.", match.homeTeam, match.awayTeam)
+            return
+        }
+        val baseline = baselines.last()
+
+        checkAndFireAlert(match, baseline, snapshot)
+    }
+
+    private fun checkAndFireAlert(match: Match, baseline: OddsSnapshot, current: OddsSnapshot) {
+        // Identify the original favorite (lowest odds pre-match)
+        val favoriteSide = baseline.favoriteSide()
+
+        val baselineOdds = when (favoriteSide) {
+            "HOME" -> baseline.homeWinOdds
+            "AWAY" -> baseline.awayWinOdds
+            else   -> baseline.drawOdds
+        }
+        val currentOdds = when (favoriteSide) {
+            "HOME" -> current.homeWinOdds
+            "AWAY" -> current.awayWinOdds
+            else   -> current.drawOdds
+        }
+
+        if (baselineOdds <= 0) return
+
+        val risePct = ((currentOdds - baselineOdds) / baselineOdds) * 100.0
+
+        log.debug(
+            "{} vs {}: {} odds {:.2f} → {:.2f} ({:.1f}% rise)",
+            match.homeTeam, match.awayTeam, favoriteSide, baselineOdds, currentOdds, risePct
+        )
+
+        if (risePct >= oddsRiseThresholdPct) {
+            val score = if (current.homeScore != null && current.awayScore != null)
+                "${current.homeScore}-${current.awayScore}" else "?"
+            val minute = current.matchMinute?.let { "${it}'" } ?: "?"
+
+            val message = buildAlertMessage(match, favoriteSide, baselineOdds, currentOdds, risePct, score, minute)
+
+            val alert = BettingAlert(
+                match            = match,
+                suggestedBet     = favoriteSide,
+                currentOdds      = currentOdds,
+                baselineOdds     = baselineOdds,
+                oddsIncreasePct  = risePct,
+                scoreAtAlert     = score,
+                message          = message,
+                notified         = false,
+                triggeredAt      = LocalDateTime.now()
+            )
+            bettingAlertRepository.save(alert)
+            log.info("🚨 ALERT: {}", message)
+        }
+    }
+
+    private fun captureOddsSnapshot(
+        match: Match,
+        isPreMatch: Boolean,
+        liveWrapper: com.fasterxml.jackson.databind.JsonNode? = null
+    ): OddsSnapshot? {
+        // For live matches use the in-play wrapper (has odds + score + minute).
+        // For pre-match use the dedicated betoffer endpoint.
+        val oddsJson = if (liveWrapper != null) liveWrapper else apiClient.fetchOdds(match.externalId) ?: return null
+        val odds = parseOdds(oddsJson) ?: return null
+
+        val liveData = liveWrapper?.get("liveData")
+        val score = liveData?.get("score")
+        val clock = liveData?.get("matchClock")
+
+        val snapshot = OddsSnapshot(
+            match       = match,
+            homeWinOdds = odds.first,
+            drawOdds    = odds.second,
+            awayWinOdds = odds.third,
+            isPreMatch  = isPreMatch,
+            homeScore   = score?.get("home")?.asInt(),
+            awayScore   = score?.get("away")?.asInt(),
+            matchMinute = clock?.get("minute")?.asInt(),
+            capturedAt  = LocalDateTime.now()
+        )
+        return oddsSnapshotRepository.save(snapshot)
+    }
+
+    // Works for both sources:
+    //   betoffer endpoint:  {"betOffers": [...]}
+    //   in-play wrapper:    {"event": {...}, "betOffers": [...], "liveData": {...}}
+    // Finds the Full Time (1X2) bet offer and extracts OT_ONE/OT_CROSS/OT_TWO.
+    // Odds are milliunits — divide by 1000.
+    private fun parseOdds(json: JsonNode): Triple<Double, Double, Double>? {
+        return try {
+            val betOffers = json["betOffers"] ?: return null
+            val fullTimeBo = betOffers.firstOrNull {
+                it["criterion"]?.get("englishLabel")?.asText() == "Full Time"
+            } ?: return null
+
+            val outcomes = fullTimeBo["outcomes"] ?: return null
+            val home = outcomes.firstOrNull { it["type"]?.asText() == "OT_ONE"   }?.get("odds")?.asDouble()?.div(1000) ?: return null
+            val draw = outcomes.firstOrNull { it["type"]?.asText() == "OT_CROSS" }?.get("odds")?.asDouble()?.div(1000) ?: return null
+            val away = outcomes.firstOrNull { it["type"]?.asText() == "OT_TWO"   }?.get("odds")?.asDouble()?.div(1000) ?: return null
+
+            Triple(home, draw, away)
+        } catch (e: Exception) {
+            log.warn("Failed to parse odds from Kambi JSON: {}", e.message)
+            null
+        }
+    }
+
+    private fun buildAlertMessage(
+        match: Match,
+        favoriteSide: String,
+        baselineOdds: Double,
+        currentOdds: Double,
+        risePct: Double,
+        score: String,
+        minute: String
+    ): String {
+        val favoriteTeam = when (favoriteSide) {
+            "HOME" -> match.homeTeam
+            "AWAY" -> match.awayTeam
+            else   -> "Draw"
+        }
+        return """
+            ⚽ BET OPPORTUNITY DETECTED
+            🏟️ ${match.homeTeam} vs ${match.awayTeam}
+            📊 Score: $score  |  ⏱️ $minute
+            🎯 Suggested bet: $favoriteSide ($favoriteTeam)
+            📈 Odds: ${"%.2f".format(baselineOdds)} → ${"%.2f".format(currentOdds)} (+${"%.1f".format(risePct)}%)
+            🕒 ${LocalDateTime.now()}
+        """.trimIndent()
+    }
+}
