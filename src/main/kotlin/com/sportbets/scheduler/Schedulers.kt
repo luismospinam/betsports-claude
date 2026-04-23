@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component
  *   - discordAlerts : every 30 seconds (drains alert queue to Discord)
  */
 @Component
+@org.springframework.context.annotation.Profile("!auth & !discover")
 class Schedulers(
     private val matchSyncService: MatchSyncService,
     private val oddsMonitorService: OddsMonitorService,

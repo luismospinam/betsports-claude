@@ -52,6 +52,16 @@ data class OddsSnapshot(
     @Column(name = "match_minute")
     val matchMinute: Int? = null,
 
+    /** Kambi outcome IDs for the 1X2 market — needed to reference the outcome in a coupon/bet request */
+    @Column(name = "home_outcome_id")
+    val homeOutcomeId: Long? = null,
+
+    @Column(name = "draw_outcome_id")
+    val drawOutcomeId: Long? = null,
+
+    @Column(name = "away_outcome_id")
+    val awayOutcomeId: Long? = null,
+
     @Column(name = "captured_at", nullable = false)
     val capturedAt: LocalDateTime = LocalDateTime.now()
 ) {

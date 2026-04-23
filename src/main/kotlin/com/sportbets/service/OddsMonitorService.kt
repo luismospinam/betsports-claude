@@ -33,6 +33,7 @@ class OddsMonitorService(
     private val matchRepository: MatchRepository,
     private val oddsSnapshotRepository: OddsSnapshotRepository,
     private val bettingAlertRepository: BettingAlertRepository,
+    private val betPlacerService: BetPlacerService,
     @Value("\${betplay.monitor.odds-rise-threshold-pct:20.0}") private val oddsRiseThresholdPct: Double,
     @Value("\${betplay.monitor.max-alerts-per-match:3}") private val maxAlertsPerMatch: Int,
 ) {
@@ -155,7 +156,20 @@ class OddsMonitorService(
                 triggeredAt      = LocalDateTime.now()
             )
             bettingAlertRepository.save(alert)
-            log.info("🚨 ALERT: {}", message)
+            log.info("ALERT: {}", message)
+
+            val outcomeId = when (favoriteSide) {
+                "HOME" -> current.homeOutcomeId
+                "AWAY" -> current.awayOutcomeId
+                else   -> current.drawOutcomeId
+            }
+            betPlacerService.placeBet(
+                outcomeId    = outcomeId,
+                oddsDecimal  = currentOdds,
+                matchDesc    = "${match.homeTeam} vs ${match.awayTeam} ($score $minute)",
+                externalId   = match.externalId,
+                favoriteSide = favoriteSide,
+            )
         }
     }
 
@@ -174,25 +188,37 @@ class OddsMonitorService(
         val clock = liveData?.get("matchClock")
 
         val snapshot = OddsSnapshot(
-            match       = match,
-            homeWinOdds = odds.first,
-            drawOdds    = odds.second,
-            awayWinOdds = odds.third,
-            isPreMatch  = isPreMatch,
-            homeScore   = score?.get("home")?.asInt(),
-            awayScore   = score?.get("away")?.asInt(),
-            matchMinute = clock?.get("minute")?.asInt(),
-            capturedAt  = LocalDateTime.now()
+            match          = match,
+            homeWinOdds    = odds.homeWinOdds,
+            drawOdds       = odds.drawOdds,
+            awayWinOdds    = odds.awayWinOdds,
+            homeOutcomeId  = odds.homeOutcomeId,
+            drawOutcomeId  = odds.drawOutcomeId,
+            awayOutcomeId  = odds.awayOutcomeId,
+            isPreMatch     = isPreMatch,
+            homeScore      = score?.get("home")?.asInt(),
+            awayScore      = score?.get("away")?.asInt(),
+            matchMinute    = clock?.get("minute")?.asInt(),
+            capturedAt     = LocalDateTime.now()
         )
         return oddsSnapshotRepository.save(snapshot)
     }
+
+    private data class ParsedOdds(
+        val homeWinOdds: Double,
+        val drawOdds: Double,
+        val awayWinOdds: Double,
+        val homeOutcomeId: Long?,
+        val drawOutcomeId: Long?,
+        val awayOutcomeId: Long?,
+    )
 
     // Works for both sources:
     //   betoffer endpoint:  {"betOffers": [...]}
     //   in-play wrapper:    {"event": {...}, "betOffers": [...], "liveData": {...}}
     // Finds the Full Time (1X2) bet offer and extracts OT_ONE/OT_CROSS/OT_TWO.
-    // Odds are milliunits — divide by 1000.
-    private fun parseOdds(json: JsonNode): Triple<Double, Double, Double>? {
+    // Odds are milliunits — divide by 1000. Outcome IDs are needed for coupon placement.
+    private fun parseOdds(json: JsonNode, matchDesc: String = "?"): ParsedOdds? {
         return try {
             val betOffers = json["betOffers"] ?: return null
             val fullTimeBo = betOffers.firstOrNull {
@@ -200,13 +226,28 @@ class OddsMonitorService(
             } ?: return null
 
             val outcomes = fullTimeBo["outcomes"] ?: return null
-            val home = outcomes.firstOrNull { it["type"]?.asText() == "OT_ONE"   }?.get("odds")?.asDouble()?.div(1000) ?: return null
-            val draw = outcomes.firstOrNull { it["type"]?.asText() == "OT_CROSS" }?.get("odds")?.asDouble()?.div(1000) ?: return null
-            val away = outcomes.firstOrNull { it["type"]?.asText() == "OT_TWO"   }?.get("odds")?.asDouble()?.div(1000) ?: return null
+            val homeNode = outcomes.firstOrNull { it["type"]?.asText() == "OT_ONE"   } ?: return null
+            val drawNode = outcomes.firstOrNull { it["type"]?.asText() == "OT_CROSS" } ?: return null
+            val awayNode = outcomes.firstOrNull { it["type"]?.asText() == "OT_TWO"   } ?: return null
 
-            Triple(home, draw, away)
+            // odds field is null when Kambi suspends the market mid-match — skip silently
+            val homeOdds = homeNode["odds"]?.asDouble()?.div(1000) ?: run {
+                log.debug("Market suspended (no odds) for {} - skipping snapshot", matchDesc)
+                return null
+            }
+            val drawOdds = drawNode["odds"]?.asDouble()?.div(1000) ?: return null
+            val awayOdds = awayNode["odds"]?.asDouble()?.div(1000) ?: return null
+
+            ParsedOdds(
+                homeWinOdds   = homeOdds,
+                drawOdds      = drawOdds,
+                awayWinOdds   = awayOdds,
+                homeOutcomeId = homeNode["id"]?.asLong(),
+                drawOutcomeId = drawNode["id"]?.asLong(),
+                awayOutcomeId = awayNode["id"]?.asLong(),
+            )
         } catch (e: Exception) {
-            log.warn("Failed to parse odds from Kambi JSON: {}", e.message)
+            log.warn("Failed to parse odds for {} from Kambi JSON: {}", matchDesc, e.message)
             null
         }
     }

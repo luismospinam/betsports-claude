@@ -6,16 +6,19 @@ spring:
   application:
     name: sport-bets
 
+  config:
+    import: "optional:classpath:application-local.yml"
+
   # No HTTP server — this is a background service only
   main:
     web-application-type: none
 
 
-  # docker run --name sportbets -e POSTGRES_PASSWORD=YOUR_DB_PASSWORD -d -p 5432:5432 -v /your/path/db:/var/lib/postgresql/data  postgres -c log_statement=all
+  # docker run --name sportbets -e POSTGRES_PASSWORD=pass1234567 -d -p 5432:5432 -v C:\Users\lmosp\OneDrive\Documents\projects\SportBets\db:/var/lib/postgresql/data  postgres -c log_statement=all
   datasource:
     url: jdbc:postgresql://localhost:5432/sportbets
     username: postgres
-    password: YOUR_DB_PASSWORD
+    password: "REPLACE_WITH_DB_PASSWORD"  # override in application-local.yml
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -46,9 +49,19 @@ betplay:
 
   monitor:
     # How much the favorite's odds must rise (%) to trigger an alert
-    odds-rise-threshold-pct: 20.0
+    odds-rise-threshold-pct: 2.0
     # Maximum alerts to send per match (prevents spam)
-    max-alerts-per-match: 3
+    max-alerts-per-match: 1
+
+  betting:
+    # Set to true to enable automatic bet placement (dry-run mode by default)
+    enabled: true
+    # Stake per bet in Colombian pesos (minimum 550)
+    stake-cop: 1000
+    # CDP remote debugging port — connects to your already-running Chrome.
+    # One-time setup: add --remote-debugging-port=9222 to your Chrome desktop shortcut,
+    # close all Chrome windows, reopen via that shortcut, and log in to Betplay.
+    cdp-port: 9222
 
   scheduler:
     # Sync upcoming matches from Betplay (every 4 hours = 14400000 ms)
@@ -72,11 +85,11 @@ betplay:
 discord:
   webhook:
     enabled: true
-    url: YOUR_DISCORD_WEBHOOK_URL
+    url: "REPLACE_WITH_WEBHOOK_URL"   # override in application-local.yml
   bot:
-    token: "YOUR_DISCORD_BOT_TOKEN"
-    channel-id: "YOUR_DISCORD_CHANNEL_ID"
-    mention-id: "YOUR_DISCORD_USER_ID"
+    token: "REPLACE_WITH_BOT_TOKEN"   # override in application-local.yml
+    channel-id: "REPLACE_WITH_CHANNEL_ID"
+    mention-id: "REPLACE_WITH_MENTION_ID"
 
 # ============================================================
 # Logging
@@ -88,3 +101,4 @@ logging:
     org.hibernate: WARN
   pattern:
     console: "%d{HH:mm:ss} [%-5level] %logger{36} - %msg%n"
+

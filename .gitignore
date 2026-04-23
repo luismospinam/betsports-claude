@@ -21,6 +21,7 @@ out/
 # Logs
 *.log
 logs/
+!logs/.gitkeep
 
 # OS
 .DS_Store
@@ -28,6 +29,10 @@ Thumbs.db
 
 # Discovery output (contains intercepted API URLs — not sensitive but not needed in git)
 betplay-api-discovery.txt
+
+# Auth token (contains live Betplay bearer token — never commit this)
+betplay-auth.json
+betplay-token.txt
 
 # PostgreSQL data volume (mounted via Docker)
 /db/
