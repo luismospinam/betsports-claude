@@ -36,6 +36,7 @@ class OddsMonitorService(
     private val betPlacerService: BetPlacerService,
     @Value("\${betplay.monitor.odds-rise-threshold-pct:20.0}") private val oddsRiseThresholdPct: Double,
     @Value("\${betplay.monitor.max-alerts-per-match:3}") private val maxAlertsPerMatch: Int,
+    @Value("\${betplay.monitor.max-match-minute:80}") private val maxMatchMinute: Int,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -114,6 +115,12 @@ class OddsMonitorService(
     }
 
     private fun checkAndFireAlert(match: Match, baseline: OddsSnapshot, current: OddsSnapshot) {
+        val minute = current.matchMinute
+        if (minute != null && minute >= maxMatchMinute) {
+            log.debug("Skipping alert for {} vs {} — match minute {} is past the cutoff", match.homeTeam, match.awayTeam, minute)
+            return
+        }
+
         // Identify the original favorite (lowest odds pre-match)
         val favoriteSide = baseline.favoriteSide()
 

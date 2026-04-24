@@ -22,6 +22,8 @@ import java.time.format.DateTimeFormatter
 class BrowserBetPlacerService(
     @Value("\${betplay.betting.stake-cop:2000}") private val stakeCop: Long,
     @Value("\${betplay.betting.cdp-port:9222}") private val cdpPort: Int,
+    @Value("\${betplay.credentials.username:}") private val username: String,
+    @Value("\${betplay.credentials.password:}") private val password: String,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -85,6 +87,11 @@ class BrowserBetPlacerService(
             })();
         """)
 
+        if (!ensureLoggedIn(page)) {
+            screenshot(page, "logs/bet-browser-$tag-fail-login.png")
+            return false
+        }
+
         val url = "https://betplay.com.co/apuestas#event/$externalId"
         log.info("[Browser] Navigating to {}", url)
         try {
@@ -131,6 +138,49 @@ class BrowserBetPlacerService(
         screenshot(page, "logs/bet-browser-$tag-3-done.png")
         log.info("[Browser] BET PLACED via browser for {}", matchDesc)
         return true
+    }
+
+    private fun ensureLoggedIn(page: Page): Boolean {
+        // Navigate to home to get a stable page for the login check
+        try {
+            page.navigate("https://betplay.com.co",
+                Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED).setTimeout(20_000.0))
+        } catch (_: Exception) {}
+        page.waitForTimeout(2_000.0)
+
+        // Already logged in if the username/password inputs are gone
+        val loginInput = page.locator("input[placeholder*='Usuario'], input[placeholder*='Cédula']")
+        if (loginInput.count() == 0) {
+            log.info("[Browser] Already logged in to Betplay")
+            return true
+        }
+
+        if (username.isBlank() || password.isBlank()) {
+            log.error("[Browser] Not logged in and no credentials configured — set betplay.credentials.username/password")
+            return false
+        }
+
+        log.info("[Browser] Not logged in — attempting automatic login")
+        return try {
+            loginInput.first().fill(username)
+            page.locator("input[placeholder*='Contraseña'], input[type='password']").first().fill(password)
+            page.locator("button:has-text('Ingresar'), button[type='submit']").first().click()
+
+            // Wait for login inputs to disappear (success) or reappear (wrong credentials)
+            page.waitForTimeout(4_000.0)
+
+            val stillShowingLogin = page.locator("input[placeholder*='Usuario'], input[placeholder*='Cédula']").count() > 0
+            if (stillShowingLogin) {
+                log.error("[Browser] Login failed — credentials may be wrong or Betplay blocked the attempt")
+                false
+            } else {
+                log.info("[Browser] Login successful")
+                true
+            }
+        } catch (e: Exception) {
+            log.error("[Browser] Exception during login: {}", e.message)
+            false
+        }
     }
 
     private fun dismissPopups(page: Page) {
@@ -222,8 +272,30 @@ class BrowserBetPlacerService(
         )) {
             val input = page.locator(selector)
             if (input.count() > 0) {
-                input.first().fill(stakeCop.toString())
-                log.info("[Browser] Entered stake {} COP", stakeCop)
+                val el = input.first()
+                // Kambi uses React — fill() alone doesn't trigger React's synthetic onChange.
+                // Click to focus, clear via triple-click, then type character by character.
+                el.click()
+                el.fill("")
+                el.type(stakeCop.toString())
+                page.waitForTimeout(500.0)
+                val entered = el.inputValue()
+                if (entered.isBlank() || entered == "0") {
+                    log.warn("[Browser] Stake field did not accept value via type() — trying JS dispatch")
+                    page.evaluate("""
+                        (function() {
+                            const sel = '$selector';
+                            const input = document.querySelector(sel);
+                            if (!input) return;
+                            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                            setter.call(input, '$stakeCop');
+                            input.dispatchEvent(new Event('input',  { bubbles: true }));
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+                        })();
+                    """)
+                    page.waitForTimeout(500.0)
+                }
+                log.info("[Browser] Entered stake {} COP (field value='{}')", stakeCop, el.inputValue())
                 return true
             }
         }
@@ -248,6 +320,18 @@ class BrowserBetPlacerService(
                 if (first.isEnabled) {
                     first.click()
                     log.info("[Browser] Clicked confirm button ({})", selector)
+
+                    // Wait and verify Betplay did not show a failure message
+                    page.waitForTimeout(3_000.0)
+                    val errorLoc = page.locator(
+                        "text=Tu apuesta no se ha efectuado, " +
+                        ":text('no se ha efectuado'), " +
+                        ":text('apuesta no realizada')"
+                    )
+                    if (errorLoc.count() > 0) {
+                        log.error("[Browser] Betplay rejected the bet: 'Tu apuesta no se ha efectuado' for {}", matchDesc)
+                        return false
+                    }
                     return true
                 } else {
                     log.warn("[Browser] Confirm button found but disabled — stake may be below minimum")
