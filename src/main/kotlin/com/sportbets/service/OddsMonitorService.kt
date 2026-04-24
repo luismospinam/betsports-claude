@@ -34,9 +34,13 @@ class OddsMonitorService(
     private val oddsSnapshotRepository: OddsSnapshotRepository,
     private val bettingAlertRepository: BettingAlertRepository,
     private val betPlacerService: BetPlacerService,
-    @Value("\${betplay.monitor.odds-rise-threshold-pct:20.0}") private val oddsRiseThresholdPct: Double,
-    @Value("\${betplay.monitor.max-alerts-per-match:3}") private val maxAlertsPerMatch: Int,
-    @Value("\${betplay.monitor.max-match-minute:80}") private val maxMatchMinute: Int,
+    @Value("\${betplay.monitor.odds-rise-threshold-pct:15.0}") private val oddsRiseThresholdPct: Double,
+    @Value("\${betplay.monitor.odds-rise-max-pct:60.0}") private val oddsRiseMaxPct: Double,
+    @Value("\${betplay.monitor.max-alerts-per-match:1}") private val maxAlertsPerMatch: Int,
+    @Value("\${betplay.monitor.min-match-minute:25}") private val minMatchMinute: Int,
+    @Value("\${betplay.monitor.max-match-minute:75}") private val maxMatchMinute: Int,
+    @Value("\${betplay.monitor.max-baseline-odds:1.80}") private val maxBaselineOdds: Double,
+    @Value("\${betplay.monitor.max-current-odds:3.50}") private val maxCurrentOdds: Double,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -115,12 +119,6 @@ class OddsMonitorService(
     }
 
     private fun checkAndFireAlert(match: Match, baseline: OddsSnapshot, current: OddsSnapshot) {
-        val minute = current.matchMinute
-        if (minute != null && minute >= maxMatchMinute) {
-            log.debug("Skipping alert for {} vs {} — match minute {} is past the cutoff", match.homeTeam, match.awayTeam, minute)
-            return
-        }
-
         // Identify the original favorite (lowest odds pre-match)
         val favoriteSide = baseline.favoriteSide()
 
@@ -138,13 +136,64 @@ class OddsMonitorService(
         if (baselineOdds <= 0) return
 
         val risePct = ((currentOdds - baselineOdds) / baselineOdds) * 100.0
+        val minute = current.matchMinute
+        val favoriteScore = if (favoriteSide == "HOME") current.homeScore else current.awayScore
+        val opponentScore = if (favoriteSide == "HOME") current.awayScore else current.homeScore
 
         log.debug(
-            "{} vs {}: {} odds {:.2f} → {:.2f} ({:.1f}% rise)",
-            match.homeTeam, match.awayTeam, favoriteSide, baselineOdds, currentOdds, risePct
+            "{} vs {}: {} odds {:.2f} → {:.2f} ({:.1f}% rise) min={} score={}-{}",
+            match.homeTeam, match.awayTeam, favoriteSide, baselineOdds, currentOdds, risePct,
+            minute, favoriteScore, opponentScore
         )
 
-        if (risePct >= oddsRiseThresholdPct) {
+        // --- Betting filters ---
+        // 1. Odds must have risen enough to be meaningful
+        if (risePct < oddsRiseThresholdPct) return
+
+        // 2. Odds rise must not indicate a true collapse (red card, injury, 2+ goals down)
+        if (risePct > oddsRiseMaxPct) {
+            log.info("Skipping {} vs {} — odds rose {:.1f}% exceeds max {:.1f}% (possible collapse)",
+                match.homeTeam, match.awayTeam, risePct, oddsRiseMaxPct)
+            return
+        }
+
+        // 3. Only bet on genuine pre-match favorites
+        if (baselineOdds > maxBaselineOdds) {
+            log.info("Skipping {} vs {} — baseline odds {:.2f} above max {:.2f} (not a strong favorite)",
+                match.homeTeam, match.awayTeam, baselineOdds, maxBaselineOdds)
+            return
+        }
+
+        // 4. Don't bet if the market has truly given up on them
+        if (currentOdds > maxCurrentOdds) {
+            log.info("Skipping {} vs {} — current odds {:.2f} above max {:.2f} (market gave up)",
+                match.homeTeam, match.awayTeam, currentOdds, maxCurrentOdds)
+            return
+        }
+
+        // 5. Only bet within the meaningful minute window
+        if (minute != null && minute < minMatchMinute) {
+            log.info("Skipping {} vs {} — minute {} too early (min {})",
+                match.homeTeam, match.awayTeam, minute, minMatchMinute)
+            return
+        }
+        if (minute != null && minute > maxMatchMinute) {
+            log.info("Skipping {} vs {} — minute {} too late (max {})",
+                match.homeTeam, match.awayTeam, minute, maxMatchMinute)
+            return
+        }
+
+        // 6. Only bet when the favorite is losing by exactly 1 goal
+        if (favoriteScore != null && opponentScore != null) {
+            val deficit = opponentScore - favoriteScore
+            if (deficit != 1) {
+                log.info("Skipping {} vs {} — score deficit is {} (need exactly -1)",
+                    match.homeTeam, match.awayTeam, deficit)
+                return
+            }
+        }
+
+        if (true) {
             val score = if (current.homeScore != null && current.awayScore != null)
                 "${current.homeScore}-${current.awayScore}" else "?"
             val minute = current.matchMinute?.let { "${it}'" } ?: "?"

@@ -48,12 +48,19 @@ betplay:
     live-path: /offering/v2018/betplay/listView/football/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
 
   monitor:
-    # How much the favorite's odds must rise (%) to trigger an alert
+    # Minimum odds rise (%) to trigger — filters out noise
     odds-rise-threshold-pct: 15.0
-    # Maximum alerts to send per match (prevents spam)
+    # Maximum odds rise (%) allowed — above this suggests collapse (red card, 2+ goals, injury)
+    odds-rise-max-pct: 60.0
+    # Maximum alerts per match (spam guard)
     max-alerts-per-match: 1
-    # Do not place bets after this match minute (not enough time left)
-    max-match-minute: 80
+    # Only bet within this minute window
+    min-match-minute: 25
+    max-match-minute: 75
+    # Only target genuine pre-match favorites (odds ≤ this value)
+    max-baseline-odds: 1.80
+    # Don't bet if market has given up (current odds above this)
+    max-current-odds: 3.50
 
   credentials:
     username: "REPLACE_WITH_BETPLAY_USERNAME"  # override in application-local.yml
