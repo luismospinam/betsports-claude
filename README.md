@@ -49,16 +49,26 @@ gradle wrapper
 ```
 
 ### 3. Configure the app
-Edit `src/main/resources/application.yml`:
+Create `src/main/resources/application-local.yml` (gitignored — never committed):
 ```yaml
 spring:
   datasource:
-    password: your_postgres_password   # ← set this
+    password: "your_postgres_password"
+
+betplay:
+  credentials:
+    username: "your_betplay_username_or_cedula"
+    password: "your_betplay_password"
 
 discord:
   webhook:
-    url: "https://discord.com/api/webhooks/..."  # ← paste your webhook URL
+    url: "https://discord.com/api/webhooks/..."
+  bot:
+    token: "your_bot_token"
+    channel-id: "your_channel_id"
+    mention-id: "your_discord_user_id"
 ```
+All other settings (thresholds, intervals, stake amount) are in `application.yml` and can be tuned there.
 
 ### 4. Discover the Betplay API endpoints ⚠️ REQUIRED FIRST
 ```bash
@@ -66,10 +76,28 @@ discord:
 ```
 A Chrome window will open. Browse to the soccer/football section on betplay.com.co, click on a few matches. After 90 seconds the tool will print all intercepted API URLs and suggest values for `application.yml`. Update `betplay.api.*` with the real endpoints.
 
-### 5. Start the monitor
+### 5. Start Chrome with remote debugging (required for bet placement)
+```bash
+# macOS
+./start-chrome.sh
+
+# Windows
+start-chrome.bat
+```
+Log in to betplay.com.co in the Chrome window that opens. The session is saved, so you only need to do this once per profile. The app uses your logged-in session to place bets automatically.
+
+### 6. Start the monitor
 ```bash
 ./gradlew bootRun
 ```
+
+> **macOS only — prevent sleep from pausing the scheduler:**
+> macOS pauses JVM timers when the system sleeps, which can cause the 4-hour match sync to be skipped.
+> Use `caffeinate` to keep the system awake for as long as the app is running:
+> ```bash
+> caffeinate -i ./gradlew bootRun
+> ```
+> `caffeinate` is built into macOS — no installation needed. It only prevents idle system sleep; your screen can still turn off. This command is not needed on Windows.
 
 ---
 
@@ -77,10 +105,18 @@ A Chrome window will open. Browse to the soccer/football section on betplay.com.
 
 | Property | Default | Description |
 |---|---|---|
-| `betplay.monitor.odds-rise-threshold-pct` | `20.0` | % odds rise needed to trigger an alert |
-| `betplay.monitor.max-alerts-per-match` | `3` | Max Discord messages per match |
+| `betplay.monitor.odds-rise-threshold-pct` | `15.0` | Minimum % odds rise to trigger a bet |
+| `betplay.monitor.odds-rise-max-pct` | `60.0` | Maximum % rise — above this suggests collapse |
+| `betplay.monitor.max-alerts-per-match` | `1` | Max bets placed per match |
+| `betplay.monitor.min-match-minute` | `25` | Don't bet before this minute |
+| `betplay.monitor.max-match-minute` | `75` | Don't bet after this minute |
+| `betplay.monitor.max-baseline-odds` | `1.80` | Only target genuine favorites |
+| `betplay.monitor.max-current-odds` | `3.50` | Skip if market has given up on them |
+| `betplay.betting.enabled` | `true` | Set to `false` for dry-run (no real bets) |
+| `betplay.betting.stake-cop` | `1000` | Stake per bet in Colombian pesos |
+| `betplay.betting.cdp-port` | `9222` | Chrome remote debugging port |
 | `betplay.scheduler.live-odds-ms` | `45000` | Live odds poll interval (ms) |
-| `betplay.scheduler.match-sync-ms` | `14400000` | Match list refresh interval (ms) |
+| `betplay.scheduler.match-sync-ms` | `14400000` | Match list refresh interval (ms — 4 hours) |
 | `discord.webhook.enabled` | `true` | Set to `false` to disable notifications |
 
 ---
