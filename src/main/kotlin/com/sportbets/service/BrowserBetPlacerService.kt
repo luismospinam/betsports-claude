@@ -304,6 +304,15 @@ class BrowserBetPlacerService(
     }
 
     private fun confirmBet(page: Page, matchDesc: String): Boolean {
+        // If Betplay is showing an odds-change approval prompt, accept it first.
+        // This happens in live markets when odds shift between outcome selection and stake entry.
+        val oddsChangeBtn = page.locator("button:has-text('Aprobar Cambio De Cuotas')")
+        if (oddsChangeBtn.count() > 0 && oddsChangeBtn.first().isEnabled) {
+            log.info("[Browser] Odds changed — accepting new odds for {}", matchDesc)
+            oddsChangeBtn.first().click()
+            page.waitForTimeout(1_500.0)
+        }
+
         for (selector in listOf(
             "button[class*='place-bets' i]",
             "button[class*='placeBets' i]",

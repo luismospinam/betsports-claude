@@ -70,8 +70,9 @@ class MatchSyncService(
                 val minute = clock?.get("minute")?.asInt()
                 val period = clock?.get("periodId")?.asText()
                 matchRepository.save(match.copy(status = MatchStatus.LIVE, updatedAt = LocalDateTime.now()))
-                log.info("Match {} vs {} is now LIVE - {}:{} min {} ({})",
-                    match.homeTeam, match.awayTeam, homeScore, awayScore, minute, period)
+                val scoreStr = if (homeScore != null && awayScore != null) "$homeScore:$awayScore" else "score pending"
+                val clockStr = if (minute != null) "min $minute ($period)" else "clock pending"
+                log.info("Match {} vs {} is now LIVE - {} {}", match.homeTeam, match.awayTeam, scoreStr, clockStr)
             }
         }
     }

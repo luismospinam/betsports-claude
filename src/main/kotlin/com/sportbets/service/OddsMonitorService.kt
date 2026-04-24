@@ -57,8 +57,13 @@ class OddsMonitorService(
         for (match in upcoming) {
             if (oddsSnapshotRepository.findByMatchIdAndIsPreMatchTrue(match.id).isEmpty()) {
                 try {
-                    captureOddsSnapshot(match, isPreMatch = true)
-                    log.info("Captured pre-match odds for {} vs {}", match.homeTeam, match.awayTeam)
+                    val snapshot = captureOddsSnapshot(match, isPreMatch = true)
+                    if (snapshot != null) {
+                        log.info("Captured pre-match odds for {} vs {}", match.homeTeam, match.awayTeam)
+                    } else {
+                        log.warn("No Full Time (1X2) market available yet for {} vs {} — will retry next cycle",
+                            match.homeTeam, match.awayTeam)
+                    }
                 } catch (e: EventNotFoundException) {
                     matchRepository.save(match.copy(status = MatchStatus.FINISHED, updatedAt = LocalDateTime.now()))
                     log.info("Match {} vs {} no longer exists in Kambi - marked as FINISHED", match.homeTeam, match.awayTeam)
@@ -107,13 +112,22 @@ class OddsMonitorService(
             return
         }
 
-        // Get the pre-match baseline
+        // Get the pre-match baseline — fall back to first live snapshot if none was captured pre-match
         val baselines = oddsSnapshotRepository.findByMatchIdAndIsPreMatchTrue(match.id)
-        if (baselines.isEmpty()) {
-            log.warn("No pre-match baseline for match {} vs {}. Skipping alert check.", match.homeTeam, match.awayTeam)
-            return
+        val baseline = if (baselines.isNotEmpty()) {
+            baselines.last()
+        } else {
+            val firstLive = oddsSnapshotRepository.findByMatchIdAndIsPreMatchFalse(match.id).firstOrNull()
+            if (firstLive == null) {
+                // First poll for this match — save current snapshot as baseline and wait for next cycle
+                oddsSnapshotRepository.save(snapshot.copy(isPreMatch = true))
+                log.info("No pre-match baseline for {} vs {} — using first live snapshot as baseline",
+                    match.homeTeam, match.awayTeam)
+                return
+            }
+            log.debug("Using first live snapshot as baseline for {} vs {}", match.homeTeam, match.awayTeam)
+            firstLive
         }
-        val baseline = baselines.last()
 
         checkAndFireAlert(match, baseline, snapshot)
     }
@@ -141,8 +155,9 @@ class OddsMonitorService(
         val opponentScore = if (favoriteSide == "HOME") current.awayScore else current.homeScore
 
         log.debug(
-            "{} vs {}: {} odds {:.2f} → {:.2f} ({:.1f}% rise) min={} score={}-{}",
-            match.homeTeam, match.awayTeam, favoriteSide, baselineOdds, currentOdds, risePct,
+            "{} vs {}: {} odds {} → {} ({}% rise) min={} score={}-{}",
+            match.homeTeam, match.awayTeam, favoriteSide,
+            "%.2f".format(baselineOdds), "%.2f".format(currentOdds), "%.1f".format(risePct),
             minute, favoriteScore, opponentScore
         )
 
@@ -152,22 +167,22 @@ class OddsMonitorService(
 
         // 2. Odds rise must not indicate a true collapse (red card, injury, 2+ goals down)
         if (risePct > oddsRiseMaxPct) {
-            log.info("Skipping {} vs {} — odds rose {:.1f}% exceeds max {:.1f}% (possible collapse)",
-                match.homeTeam, match.awayTeam, risePct, oddsRiseMaxPct)
+            log.info("Skipping {} vs {} — odds rose {}% exceeds max {}% (possible collapse)",
+                match.homeTeam, match.awayTeam, "%.1f".format(risePct), "%.1f".format(oddsRiseMaxPct))
             return
         }
 
         // 3. Only bet on genuine pre-match favorites
         if (baselineOdds > maxBaselineOdds) {
-            log.info("Skipping {} vs {} — baseline odds {:.2f} above max {:.2f} (not a strong favorite)",
-                match.homeTeam, match.awayTeam, baselineOdds, maxBaselineOdds)
+            log.info("Skipping {} vs {} — baseline odds {} above max {} (not a strong favorite)",
+                match.homeTeam, match.awayTeam, "%.2f".format(baselineOdds), "%.2f".format(maxBaselineOdds))
             return
         }
 
         // 4. Don't bet if the market has truly given up on them
         if (currentOdds > maxCurrentOdds) {
-            log.info("Skipping {} vs {} — current odds {:.2f} above max {:.2f} (market gave up)",
-                match.homeTeam, match.awayTeam, currentOdds, maxCurrentOdds)
+            log.info("Skipping {} vs {} — current odds {} above max {} (market gave up)",
+                match.homeTeam, match.awayTeam, "%.2f".format(currentOdds), "%.2f".format(maxCurrentOdds))
             return
         }
 
@@ -193,49 +208,47 @@ class OddsMonitorService(
             }
         }
 
-        if (true) {
-            val score = if (current.homeScore != null && current.awayScore != null)
-                "${current.homeScore}-${current.awayScore}" else "?"
-            val minute = current.matchMinute?.let { "${it}'" } ?: "?"
+        val score = if (current.homeScore != null && current.awayScore != null)
+            "${current.homeScore}-${current.awayScore}" else "?"
+        val minuteStr = current.matchMinute?.let { "${it}'" } ?: "?"
 
-            val outcomeId = when (favoriteSide) {
-                "HOME" -> current.homeOutcomeId
-                "AWAY" -> current.awayOutcomeId
-                else   -> current.drawOutcomeId
-            }
-
-            // Place bet first so the result is included in the alert message
-            val betResult = betPlacerService.placeBet(
-                outcomeId    = outcomeId,
-                oddsDecimal  = currentOdds,
-                matchDesc    = "${match.homeTeam} vs ${match.awayTeam} ($score $minute)",
-                externalId   = match.externalId,
-                favoriteSide = favoriteSide,
-            )
-
-            val message = buildAlertMessage(match, favoriteSide, baselineOdds, currentOdds, risePct, score, minute, betResult)
-
-            val alert = BettingAlert(
-                match            = match,
-                suggestedBet     = favoriteSide,
-                currentOdds      = currentOdds,
-                baselineOdds     = baselineOdds,
-                oddsIncreasePct  = risePct,
-                scoreAtAlert     = score,
-                message          = message,
-                notified         = false,
-                betPlaced        = betResult is BetResult.Placed,
-                betStatus        = when (betResult) {
-                    is BetResult.Placed -> "PLACED"
-                    is BetResult.DryRun -> "DRY_RUN"
-                    BetResult.Failed    -> "FAILED"
-                    BetResult.Skipped   -> "SKIPPED"
-                },
-                triggeredAt      = LocalDateTime.now()
-            )
-            bettingAlertRepository.save(alert)
-            log.info("ALERT: {}", message)
+        val outcomeId = when (favoriteSide) {
+            "HOME" -> current.homeOutcomeId
+            "AWAY" -> current.awayOutcomeId
+            else   -> current.drawOutcomeId
         }
+
+        // Place bet first so the result is included in the alert message
+        val betResult = betPlacerService.placeBet(
+            outcomeId    = outcomeId,
+            oddsDecimal  = currentOdds,
+            matchDesc    = "${match.homeTeam} vs ${match.awayTeam} ($score $minuteStr)",
+            externalId   = match.externalId,
+            favoriteSide = favoriteSide,
+        )
+
+        val message = buildAlertMessage(match, favoriteSide, baselineOdds, currentOdds, risePct, score, minuteStr, betResult)
+
+        val alert = BettingAlert(
+            match            = match,
+            suggestedBet     = favoriteSide,
+            currentOdds      = currentOdds,
+            baselineOdds     = baselineOdds,
+            oddsIncreasePct  = risePct,
+            scoreAtAlert     = score,
+            message          = message,
+            notified         = false,
+            betPlaced        = betResult is BetResult.Placed,
+            betStatus        = when (betResult) {
+                is BetResult.Placed -> "PLACED"
+                is BetResult.DryRun -> "DRY_RUN"
+                BetResult.Failed    -> "FAILED"
+                BetResult.Skipped   -> "SKIPPED"
+            },
+            triggeredAt      = LocalDateTime.now()
+        )
+        bettingAlertRepository.save(alert)
+        log.info("ALERT: {}", message)
     }
 
     private fun captureOddsSnapshot(

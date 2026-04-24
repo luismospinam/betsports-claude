@@ -37,6 +37,9 @@ interface OddsSnapshotRepository : JpaRepository<OddsSnapshot, Long> {
     /** The pre-match baseline snapshot(s) */
     fun findByMatchIdAndIsPreMatchTrue(matchId: Long): List<OddsSnapshot>
 
+    /** Live snapshots ordered oldest first — used to find the first live snapshot as fallback baseline */
+    fun findByMatchIdAndIsPreMatchFalse(matchId: Long): List<OddsSnapshot>
+
     /** Count live snapshots taken since match started */
     fun countByMatchIdAndIsPreMatchFalse(matchId: Long): Long
 }
