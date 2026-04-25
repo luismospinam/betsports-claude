@@ -219,6 +219,10 @@ class BrowserBetPlacerService(
     }
 
     private fun clickOutcome(page: Page, outcomeId: Long?, favoriteSide: String, matchDesc: String): Boolean {
+        // Timeout for a single click attempt — short so we don't spam 60 retries when the
+        // market is suspended (e.g. after a goal). Playwright retries every 500ms internally.
+        val clickTimeout = Locator.ClickOptions().setTimeout(120_000.0)
+
         if (outcomeId != null) {
             for (selector in listOf(
                 "[data-outcome-id='$outcomeId']",
@@ -227,9 +231,14 @@ class BrowserBetPlacerService(
             )) {
                 val el = page.locator(selector)
                 if (el.count() > 0) {
-                    el.first().click()
-                    log.info("[Browser] Clicked outcome by data attribute (id={})", outcomeId)
-                    return true
+                    return try {
+                        el.first().click(clickTimeout)
+                        log.info("[Browser] Clicked outcome by data attribute (id={})", outcomeId)
+                        true
+                    } catch (e: Exception) {
+                        log.warn("[Browser] Outcome button found but not clickable (market suspended?) for {} — {}", matchDesc, e.message?.take(80))
+                        false
+                    }
                 }
             }
         }
@@ -241,19 +250,54 @@ class BrowserBetPlacerService(
             else   -> 0
         }
 
-        for (selector in listOf(
+        // Scope to the "Resultado Final" (1X2) section to avoid clicking buttons from other
+        // markets (half-time, double chance, total goals) that also appear on the same page.
+        val sectionSelectors = listOf(
+            "div:has(> span:has-text('Resultado Final'))",
+            "div:has(> div:has-text('Resultado Final'))",
+            "li:has-text('Resultado Final')",
+            "section:has-text('Resultado Final')",
+        )
+        val outcomeButtonSelectors = listOf(
             ".KambiBC-outcome-list__outcome",
             "[class*='outcome-list__outcome']",
             "[class*='OutcomeButton']",
             "[class*='outcomeButton']",
             "button[class*='outcome']",
-        )) {
+        )
+
+        for (sectionSel in sectionSelectors) {
+            val section = page.locator(sectionSel).first()
+            if (section.count() == 0) continue
+            for (btnSel in outcomeButtonSelectors) {
+                val buttons = section.locator(btnSel)
+                val count = buttons.count()
+                if (count > positionIndex) {
+                    return try {
+                        buttons.nth(positionIndex).click(clickTimeout)
+                        log.info("[Browser] Clicked outcome by position {} / {} scoped to 'Resultado Final' (section={} btn={})", positionIndex, count, sectionSel, btnSel)
+                        true
+                    } catch (e: Exception) {
+                        log.warn("[Browser] Outcome button found but not clickable (market suspended?) for {} — {}", matchDesc, e.message?.take(80))
+                        false
+                    }
+                }
+            }
+        }
+
+        // Last resort: global positional search (no section scoping)
+        for (selector in outcomeButtonSelectors) {
             val buttons = page.locator(selector)
             val count = buttons.count()
             if (count > positionIndex) {
-                buttons.nth(positionIndex).click()
-                log.info("[Browser] Clicked outcome by position {} / {} (selector={})", positionIndex, count, selector)
-                return true
+                return try {
+                    buttons.nth(positionIndex).click(clickTimeout)
+                    log.warn("[Browser] Clicked outcome by GLOBAL position {} / {} — 'Resultado Final' section not found, may be wrong market (selector={})", positionIndex, count, selector)
+                    true
+                } catch (e: Exception) {
+                    log.warn("[Browser] Outcome button found but not clickable (market suspended?) for {} — {}", matchDesc, e.message?.take(80))
+                    false
+                }
             }
         }
 

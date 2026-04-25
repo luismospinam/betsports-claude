@@ -41,6 +41,11 @@ class OddsMonitorService(
     @Value("\${betplay.monitor.max-match-minute:75}") private val maxMatchMinute: Int,
     @Value("\${betplay.monitor.max-baseline-odds:1.80}") private val maxBaselineOdds: Double,
     @Value("\${betplay.monitor.max-current-odds:3.50}") private val maxCurrentOdds: Double,
+    @Value("\${betplay.monitor.halftime.enabled:true}") private val halftimeEnabled: Boolean,
+    @Value("\${betplay.monitor.halftime.min-minute:35}") private val halftimeMinMinute: Int,
+    @Value("\${betplay.monitor.halftime.max-minute:50}") private val halftimeMaxMinute: Int,
+    @Value("\${betplay.monitor.halftime.odds-rise-threshold-pct:10.0}") private val halftimeOddsRiseThresholdPct: Double,
+    @Value("\${betplay.monitor.halftime.max-current-odds:4.00}") private val halftimeMaxCurrentOdds: Double,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -96,8 +101,15 @@ class OddsMonitorService(
             try {
                 processLiveMatch(match, liveDataByEventId[match.externalId])
             } catch (e: EventNotFoundException) {
-                matchRepository.save(match.copy(status = MatchStatus.FINISHED, updatedAt = LocalDateTime.now()))
-                log.info("Live match {} vs {} no longer exists in Kambi - marked as FINISHED", match.homeTeam, match.awayTeam)
+                val lastSnapshot = oddsSnapshotRepository.findTopByMatchIdOrderByCapturedAtDesc(match.id)
+                matchRepository.save(match.copy(
+                    status         = MatchStatus.FINISHED,
+                    finalHomeScore = lastSnapshot?.homeScore,
+                    finalAwayScore = lastSnapshot?.awayScore,
+                    updatedAt      = LocalDateTime.now()
+                ))
+                val finalScore = if (lastSnapshot?.homeScore != null) "${lastSnapshot.homeScore}-${lastSnapshot.awayScore}" else "score unknown"
+                log.info("Live match {} vs {} no longer exists in Kambi - marked as FINISHED ({})", match.homeTeam, match.awayTeam, finalScore)
             }
         }
     }
@@ -105,10 +117,17 @@ class OddsMonitorService(
     private fun processLiveMatch(match: Match, liveWrapper: com.fasterxml.jackson.databind.JsonNode?) {
         val snapshot = captureOddsSnapshot(match, isPreMatch = false, liveWrapper = liveWrapper) ?: return
 
-        // Skip alerting if too many alerts already sent for this match
-        val existingAlerts = bettingAlertRepository.countByMatchId(match.id)
-        if (existingAlerts >= maxAlertsPerMatch) {
+        // Skip if a real bet was already placed for this match (FAILED/SKIPPED don't count)
+        val placedAlerts = bettingAlertRepository.countByMatchIdAndBetStatusIn(match.id, listOf("PLACED", "DRY_RUN"))
+        if (placedAlerts >= maxAlertsPerMatch) {
             log.debug("Max alerts ({}) reached for match {}", maxAlertsPerMatch, match.id)
+            return
+        }
+
+        // Stop retrying after 3 consecutive failures to avoid spamming Discord
+        val failedAlerts = bettingAlertRepository.countByMatchIdAndBetStatusIn(match.id, listOf("FAILED", "SKIPPED"))
+        if (failedAlerts >= 3) {
+            log.debug("Max failed attempts (3) reached for match {} — giving up", match.id)
             return
         }
 
@@ -162,8 +181,11 @@ class OddsMonitorService(
         )
 
         // --- Betting filters ---
-        // 1. Odds must have risen enough to be meaningful
-        if (risePct < oddsRiseThresholdPct) return
+        // 1. Odds must have risen enough to be meaningful.
+        // Use the lower of the two path thresholds so halftime matches (10%) aren't
+        // silently killed before path evaluation when Path A requires 15%.
+        val minThreshold = minOf(oddsRiseThresholdPct, halftimeOddsRiseThresholdPct)
+        if (risePct < minThreshold) return
 
         // 2. Odds rise must not indicate a true collapse (red card, injury, 2+ goals down)
         if (risePct > oddsRiseMaxPct) {
@@ -186,31 +208,39 @@ class OddsMonitorService(
             return
         }
 
-        // 5. Only bet within the meaningful minute window
-        if (minute != null && minute < minMatchMinute) {
-            log.info("Skipping {} vs {} — minute {} too early (min {})",
-                match.homeTeam, match.awayTeam, minute, minMatchMinute)
+        // Require score and minute to be known before evaluating either path
+        if (minute == null || favoriteScore == null || opponentScore == null) {
+            log.info("Skipping {} vs {} — score/minute not yet available", match.homeTeam, match.awayTeam)
             return
         }
-        if (minute != null && minute > maxMatchMinute) {
-            log.info("Skipping {} vs {} — minute {} too late (max {})",
-                match.homeTeam, match.awayTeam, minute, maxMatchMinute)
-            return
-        }
+        val deficit = opponentScore - favoriteScore
 
-        // 6. Only bet when the favorite is losing by exactly 1 goal
-        if (favoriteScore != null && opponentScore != null) {
-            val deficit = opponentScore - favoriteScore
-            if (deficit != 1) {
-                log.info("Skipping {} vs {} — score deficit is {} (need exactly -1)",
-                    match.homeTeam, match.awayTeam, deficit)
+        // --- Path A: favorite losing by exactly 1 goal ---
+        val scenario: String = when {
+            deficit == 1
+                && risePct >= oddsRiseThresholdPct
+                && minute >= minMatchMinute && minute <= maxMatchMinute
+                && currentOdds <= maxCurrentOdds -> "LOSING_BY_1"
+
+            // --- Path B: favorite tied near halftime ---
+            halftimeEnabled
+                && deficit == 0
+                && minute >= halftimeMinMinute && minute <= halftimeMaxMinute
+                && risePct >= halftimeOddsRiseThresholdPct
+                && currentOdds <= halftimeMaxCurrentOdds -> "TIED_HALFTIME"
+
+            else -> {
+                log.info(
+                    "Skipping {} vs {} — no path matched (deficit={} min={} rise={}% currentOdds={})",
+                    match.homeTeam, match.awayTeam, deficit, minute,
+                    "%.1f".format(risePct), "%.2f".format(currentOdds)
+                )
                 return
             }
         }
 
-        val score = if (current.homeScore != null && current.awayScore != null)
-            "${current.homeScore}-${current.awayScore}" else "?"
-        val minuteStr = current.matchMinute?.let { "${it}'" } ?: "?"
+        val score = "${current.homeScore}-${current.awayScore}"
+        val minuteStr = "${minute}'"
 
         val outcomeId = when (favoriteSide) {
             "HOME" -> current.homeOutcomeId
@@ -227,7 +257,7 @@ class OddsMonitorService(
             favoriteSide = favoriteSide,
         )
 
-        val message = buildAlertMessage(match, favoriteSide, baselineOdds, currentOdds, risePct, score, minuteStr, betResult)
+        val message = buildAlertMessage(match, favoriteSide, baselineOdds, currentOdds, risePct, score, minuteStr, betResult, scenario)
 
         val alert = BettingAlert(
             match            = match,
@@ -245,10 +275,11 @@ class OddsMonitorService(
                 BetResult.Failed    -> "FAILED"
                 BetResult.Skipped   -> "SKIPPED"
             },
+            triggerScenario  = scenario,
             triggeredAt      = LocalDateTime.now()
         )
         bettingAlertRepository.save(alert)
-        log.info("ALERT: {}", message)
+        log.info("ALERT [{}]: {}", scenario, message)
     }
 
     private fun captureOddsSnapshot(
@@ -339,11 +370,16 @@ class OddsMonitorService(
         score: String,
         minute: String,
         betResult: BetResult,
+        scenario: String,
     ): String {
         val favoriteTeam = when (favoriteSide) {
             "HOME" -> match.homeTeam
             "AWAY" -> match.awayTeam
             else   -> "Draw"
+        }
+        val header = when (scenario) {
+            "TIED_HALFTIME" -> "⏱️ BET OPPORTUNITY — FAVORITE TIED AT HALFTIME"
+            else            -> "⚽ BET OPPORTUNITY — FAVORITE LOSING (comeback)"
         }
         val betLine = when (betResult) {
             is BetResult.Placed -> "✅ Bet placed: ${"%,d".format(betResult.stake)} COP @ ${"%.2f".format(currentOdds)}"
@@ -352,7 +388,7 @@ class OddsMonitorService(
             BetResult.Skipped   -> "⚠️ Bet skipped — outcome ID not available"
         }
         return """
-            ⚽ BET OPPORTUNITY DETECTED
+            $header
             🏟️ ${match.homeTeam} vs ${match.awayTeam}
             📊 Score: $score  |  ⏱️ $minute
             🎯 Suggested bet: $favoriteSide ($favoriteTeam)

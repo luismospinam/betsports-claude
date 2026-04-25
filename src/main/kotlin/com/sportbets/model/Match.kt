@@ -43,6 +43,13 @@ data class Match(
     @Column(name = "betplay_url")
     val betplayUrl: String? = null,
 
+    /** Final score — set when the match is marked FINISHED */
+    @Column(name = "final_home_score")
+    val finalHomeScore: Int? = null,
+
+    @Column(name = "final_away_score")
+    val finalAwayScore: Int? = null,
+
     @Column(name = "created_at", nullable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
 

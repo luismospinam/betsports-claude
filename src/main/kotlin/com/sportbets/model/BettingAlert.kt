@@ -51,6 +51,10 @@ data class BettingAlert(
     @Column(name = "bet_status", length = 50)
     val betStatus: String? = null,
 
+    /** LOSING_BY_1 or TIED_HALFTIME — which trigger scenario fired */
+    @Column(name = "trigger_scenario", length = 30)
+    val triggerScenario: String? = null,
+
     @Column(name = "triggered_at", nullable = false)
     val triggeredAt: LocalDateTime = LocalDateTime.now()
 )

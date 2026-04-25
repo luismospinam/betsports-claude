@@ -54,4 +54,7 @@ interface BettingAlertRepository : JpaRepository<BettingAlert, Long> {
 
     /** How many alerts have been fired for this match already */
     fun countByMatchId(matchId: Long): Long
+
+    /** How many alerts resulted in an actual bet (PLACED or DRY_RUN) — used to enforce max-alerts-per-match */
+    fun countByMatchIdAndBetStatusIn(matchId: Long, statuses: List<String>): Long
 }
