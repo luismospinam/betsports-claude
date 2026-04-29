@@ -83,8 +83,15 @@ class DiscordNotifier(
             else      -> 0xF5A623  // orange (dry-run / skipped)
         }
 
+        val embedTitle = when (alert.betStatus) {
+            "PLACED"  -> "Bet Placed!"
+            "DRY_RUN" -> "Bet Placed (Dry Run)"
+            "FAILED"  -> "Bet Failed"
+            "SKIPPED" -> "Bet Skipped"
+            else      -> "Bet Alert"
+        }
         val embed = mapOf(
-            "title"       to "Bet Opportunity Detected!",
+            "title"       to embedTitle,
             "color"       to embedColor,
             "description" to alert.message,
             "fields"      to listOf(
@@ -102,7 +109,18 @@ class DiscordNotifier(
             "timestamp" to alert.triggeredAt.toString() + "Z"
         )
 
-        val content = if (mentionId.isNotBlank()) "@everyone <@$mentionId>" else "@everyone"
+        val resultEmoji = when (alert.betStatus) {
+            "PLACED"  -> "✅"
+            "DRY_RUN" -> "🔕"
+            "FAILED"  -> "❌"
+            "SKIPPED" -> "⚠️"
+            else      -> "—"
+        }
+        val notifLine = "$resultEmoji ${match.homeTeam} vs ${match.awayTeam} | " +
+            "${alert.scoreAtAlert ?: "?"} | ${alert.suggestedBet} | " +
+            "${"%.2f".format(alert.baselineOdds)}→${"%.2f".format(alert.currentOdds)} " +
+            "(+${"%.0f".format(alert.oddsIncreasePct)}%)"
+        val content = if (mentionId.isNotBlank()) "@everyone <@$mentionId>\n$notifLine" else "@everyone\n$notifLine"
 
         return mapOf("content" to content, "embeds" to listOf(embed))
     }

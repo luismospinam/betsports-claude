@@ -58,19 +58,21 @@ betplay:
     min-match-minute: 1
     max-match-minute: 80
     # Only target genuine pre-match favorites (odds ≤ this value)
-    max-baseline-odds: 1.65
+    max-baseline-odds: 1.55
     # Don't bet if market has given up (current odds above this)
     max-current-odds: 4.50
+    # Path A: use Doble Oportunidad only when outright odds are at or above this value
+    double-chance-min-odds: 1.9
 
     halftime:
       # Bet on tied genuine favorites near halftime (Path B trigger)
       enabled: true
-      min-minute: 20
-      max-minute: 70
+      min-minute: 10
+      max-minute: 43
       # Lower threshold than Path A — tied team just needs to score once
       odds-rise-threshold-pct: 20.0
       # Slightly higher ceiling allowed since risk profile is lower
-      max-current-odds: 3.00
+      max-current-odds: 2.50
 
   credentials:
     username: "REPLACE_WITH_BETPLAY_USERNAME"  # override in application-local.yml
@@ -84,6 +86,8 @@ betplay:
     # CDP remote debugging port — connects to your already-running Chrome.
     # One-time setup: run ./start-chrome.sh — credentials are filled automatically on login check.
     cdp-port: 9222
+    # Cancel bet if betslip odds differ from trigger odds by more than this % (situation changed during suspension)
+    max-odds-deviation-pct: 15.0
 
   scheduler:
     # Sync upcoming matches from Betplay (every 4 hours = 14400000 ms)

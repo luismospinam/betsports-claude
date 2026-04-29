@@ -62,6 +62,20 @@ data class OddsSnapshot(
     @Column(name = "away_outcome_id")
     val awayOutcomeId: Long? = null,
 
+    /** Kambi outcome IDs for the Double Chance market (Doble Oportunidad) */
+    @Column(name = "home_draw_outcome_id")
+    val homeDrawOutcomeId: Long? = null,   // 1X — home win or draw
+
+    @Column(name = "away_draw_outcome_id")
+    val awayDrawOutcomeId: Long? = null,   // X2 — away win or draw
+
+    /** Decimal odds for the Double Chance market at time of snapshot */
+    @Column(name = "home_draw_odds")
+    val homeDrawOdds: Double? = null,      // 1X odds
+
+    @Column(name = "away_draw_odds")
+    val awayDrawOdds: Double? = null,      // X2 odds
+
     @Column(name = "captured_at", nullable = false)
     val capturedAt: LocalDateTime = LocalDateTime.now()
 ) {

@@ -64,13 +64,14 @@ class TestBrowserBetRunner(
         log.info("Launching browser in 3 seconds... (Ctrl+C to abort)")
         Thread.sleep(3_000)
 
-        val success = browserBetPlacer.placeBet(
+        val result = browserBetPlacer.placeBet(
             externalId   = match.externalId,
             outcomeId    = outcomeId,
             favoriteSide = side,
             matchDesc    = "${match.homeTeam} vs ${match.awayTeam}",
+            triggerOdds  = 1.0,  // test runner — no deviation check intended
         )
 
-        log.info("=== TEST RESULT: {} ===", if (success) "SUCCESS" else "FAILED — check logs/bet-browser-*.png")
+        log.info("=== TEST RESULT: {} ===", result)
     }
 }

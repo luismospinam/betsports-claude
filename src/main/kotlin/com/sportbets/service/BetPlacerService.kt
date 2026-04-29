@@ -19,19 +19,25 @@ class BetPlacerService(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    fun placeBet(outcomeId: Long?, oddsDecimal: Double, matchDesc: String, externalId: String, favoriteSide: String): BetResult {
+    fun placeBet(
+        outcomeId: Long?,
+        oddsDecimal: Double,
+        matchDesc: String,
+        externalId: String,
+        favoriteSide: String,
+        betMarket: String = "RESULTADO_FINAL",
+    ): BetResult {
         if (outcomeId == null) {
             log.warn("Cannot place bet for {} — outcomeId not available", matchDesc)
             return BetResult.Skipped
         }
 
         if (!bettingEnabled) {
-            log.info("[DRY RUN] {} | outcomeId={} odds={} stake={}COP — set betplay.betting.enabled=true to activate",
-                matchDesc, outcomeId, "%.2f".format(oddsDecimal), stakeCop)
+            log.info("[DRY RUN] {} | outcomeId={} odds={} stake={}COP market={} — set betplay.betting.enabled=true to activate",
+                matchDesc, outcomeId, "%.2f".format(oddsDecimal), stakeCop, betMarket)
             return BetResult.DryRun(stakeCop)
         }
 
-        val placed = browserBetPlacer.placeBet(externalId, outcomeId, favoriteSide, matchDesc)
-        return if (placed) BetResult.Placed(stakeCop) else BetResult.Failed
+        return browserBetPlacer.placeBet(externalId, outcomeId, favoriteSide, matchDesc, oddsDecimal, betMarket)
     }
 }

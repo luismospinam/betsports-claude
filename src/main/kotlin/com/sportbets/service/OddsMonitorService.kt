@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Core odds monitoring logic.
@@ -41,6 +42,7 @@ class OddsMonitorService(
     @Value("\${betplay.monitor.max-match-minute:75}") private val maxMatchMinute: Int,
     @Value("\${betplay.monitor.max-baseline-odds:1.80}") private val maxBaselineOdds: Double,
     @Value("\${betplay.monitor.max-current-odds:3.50}") private val maxCurrentOdds: Double,
+    @Value("\${betplay.monitor.double-chance-min-odds:2.0}") private val doubleChanceMinOdds: Double,
     @Value("\${betplay.monitor.halftime.enabled:true}") private val halftimeEnabled: Boolean,
     @Value("\${betplay.monitor.halftime.min-minute:35}") private val halftimeMinMinute: Int,
     @Value("\${betplay.monitor.halftime.max-minute:50}") private val halftimeMaxMinute: Int,
@@ -48,6 +50,21 @@ class OddsMonitorService(
     @Value("\${betplay.monitor.halftime.max-current-odds:4.00}") private val halftimeMaxCurrentOdds: Double,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    // Per-match DC cache. Outcome IDs never change so they are cached indefinitely.
+    // Odds drift during the match — we re-fetch them every dcOddsRefreshMs so each
+    // snapshot stores a reasonably live value without hitting the API every 45s.
+    private data class DCCache(
+        val homeDrawOutcomeId: Long?,
+        val awayDrawOutcomeId: Long?,
+        val homeDrawOdds: Double?,
+        val awayDrawOdds: Double?,
+        val oddsLastFetchedMs: Long,
+    )
+    private val dcCache = ConcurrentHashMap<Long, DCCache>()
+
+    @Value("\${betplay.monitor.dc-odds-refresh-ms:180000}")
+    private val dcOddsRefreshMs: Long = 180_000L
 
     /**
      * Called by scheduler — captures pre-match odds for UPCOMING matches
@@ -242,10 +259,37 @@ class OddsMonitorService(
         val score = "${current.homeScore}-${current.awayScore}"
         val minuteStr = "${minute}'"
 
-        val outcomeId = when (favoriteSide) {
-            "HOME" -> current.homeOutcomeId
-            "AWAY" -> current.awayOutcomeId
-            else   -> current.drawOutcomeId
+        // Path A: use Doble Oportunidad only when outright win odds >= 2.0 (market considers
+        // the favorite a real risk). Below 2.0 the team is still likely to win outright.
+        // Path B always bets outright win — tied team needs to score, a draw adds no value.
+        val outcomeId: Long?
+        val betMarket: String
+        if (scenario == "LOSING_BY_1") {
+            val outrightId = when (favoriteSide) { "HOME" -> current.homeOutcomeId; "AWAY" -> current.awayOutcomeId; else -> current.drawOutcomeId }
+            if (currentOdds >= doubleChanceMinOdds) {
+                val dcId = when (favoriteSide) {
+                    "HOME" -> current.homeDrawOutcomeId
+                    "AWAY" -> current.awayDrawOutcomeId
+                    else   -> null
+                }
+                if (dcId != null) {
+                    outcomeId = dcId
+                    betMarket = "DOBLE_OPORTUNIDAD"
+                } else {
+                    log.warn("Double chance outcomeId not available for {} vs {} (odds={}) — falling back to outright win",
+                        match.homeTeam, match.awayTeam, "%.2f".format(currentOdds))
+                    outcomeId = outrightId
+                    betMarket = "RESULTADO_FINAL"
+                }
+            } else {
+                log.info("Path A: outright odds {} < {} for {} vs {} — betting outright win",
+                    "%.2f".format(currentOdds), "%.2f".format(doubleChanceMinOdds), match.homeTeam, match.awayTeam)
+                outcomeId = outrightId
+                betMarket = "RESULTADO_FINAL"
+            }
+        } else {
+            outcomeId = when (favoriteSide) { "HOME" -> current.homeOutcomeId; "AWAY" -> current.awayOutcomeId; else -> current.drawOutcomeId }
+            betMarket = "RESULTADO_FINAL"
         }
 
         // Place bet first so the result is included in the alert message
@@ -255,9 +299,10 @@ class OddsMonitorService(
             matchDesc    = "${match.homeTeam} vs ${match.awayTeam} ($score $minuteStr)",
             externalId   = match.externalId,
             favoriteSide = favoriteSide,
+            betMarket    = betMarket,
         )
 
-        val message = buildAlertMessage(match, favoriteSide, baselineOdds, currentOdds, risePct, score, minuteStr, betResult, scenario)
+        val message = buildAlertMessage(match, favoriteSide, baselineOdds, currentOdds, risePct, score, minuteStr, betResult, scenario, betMarket)
 
         val alert = BettingAlert(
             match            = match,
@@ -292,23 +337,69 @@ class OddsMonitorService(
         val oddsJson = if (liveWrapper != null) liveWrapper else apiClient.fetchOdds(match.externalId) ?: return null
         val odds = parseOdds(oddsJson) ?: return null
 
+        // The live-path wrapper only contains the 1X2 market — Double Chance is absent.
+        // We fetch DC data from the betoffer endpoint and cache it per match:
+        //   - Outcome IDs: cached indefinitely (they never change during a match)
+        //   - Odds: refreshed every dcOddsRefreshMs (default 3 min) so snapshots store
+        //     live values for historical analysis without hitting the API every 45s.
+        val homeDrawOutcomeId: Long?
+        val awayDrawOutcomeId: Long?
+        val homeDrawOdds: Double?
+        val awayDrawOdds: Double?
+        if (liveWrapper != null) {
+            val now = System.currentTimeMillis()
+            val cached = dcCache[match.id]
+            if (cached != null && now - cached.oddsLastFetchedMs < dcOddsRefreshMs) {
+                // Odds are still fresh — use cached values entirely
+                homeDrawOutcomeId = cached.homeDrawOutcomeId
+                awayDrawOutcomeId = cached.awayDrawOutcomeId
+                homeDrawOdds      = cached.homeDrawOdds
+                awayDrawOdds      = cached.awayDrawOdds
+            } else {
+                // Odds expired (or first fetch) — call betoffer for fresh data
+                val fullOdds = apiClient.fetchOdds(match.externalId)?.let { parseOdds(it) }
+                // Keep existing IDs from cache if available (avoids null if API is slow)
+                homeDrawOutcomeId = cached?.homeDrawOutcomeId ?: fullOdds?.homeDrawOutcomeId
+                awayDrawOutcomeId = cached?.awayDrawOutcomeId ?: fullOdds?.awayDrawOutcomeId
+                homeDrawOdds      = fullOdds?.homeDrawOdds
+                awayDrawOdds      = fullOdds?.awayDrawOdds
+                dcCache[match.id] = DCCache(homeDrawOutcomeId, awayDrawOutcomeId, homeDrawOdds, awayDrawOdds, now)
+                if (cached == null) {
+                    if (homeDrawOutcomeId != null || awayDrawOutcomeId != null)
+                        log.info("Fetched Double Chance IDs for {} vs {} (1X={} | X2={})",
+                            match.homeTeam, match.awayTeam, homeDrawOutcomeId, awayDrawOutcomeId)
+                    else
+                        log.debug("No Double Chance market in betoffer for {} vs {}", match.homeTeam, match.awayTeam)
+                }
+            }
+        } else {
+            homeDrawOutcomeId = odds.homeDrawOutcomeId
+            awayDrawOutcomeId = odds.awayDrawOutcomeId
+            homeDrawOdds      = odds.homeDrawOdds
+            awayDrawOdds      = odds.awayDrawOdds
+        }
+
         val liveData = liveWrapper?.get("liveData")
         val score = liveData?.get("score")
         val clock = liveData?.get("matchClock")
 
         val snapshot = OddsSnapshot(
-            match          = match,
-            homeWinOdds    = odds.homeWinOdds,
-            drawOdds       = odds.drawOdds,
-            awayWinOdds    = odds.awayWinOdds,
-            homeOutcomeId  = odds.homeOutcomeId,
-            drawOutcomeId  = odds.drawOutcomeId,
-            awayOutcomeId  = odds.awayOutcomeId,
-            isPreMatch     = isPreMatch,
-            homeScore      = score?.get("home")?.asInt(),
-            awayScore      = score?.get("away")?.asInt(),
-            matchMinute    = clock?.get("minute")?.asInt(),
-            capturedAt     = LocalDateTime.now()
+            match               = match,
+            homeWinOdds         = odds.homeWinOdds,
+            drawOdds            = odds.drawOdds,
+            awayWinOdds         = odds.awayWinOdds,
+            homeOutcomeId       = odds.homeOutcomeId,
+            drawOutcomeId       = odds.drawOutcomeId,
+            awayOutcomeId       = odds.awayOutcomeId,
+            homeDrawOutcomeId   = homeDrawOutcomeId,
+            awayDrawOutcomeId   = awayDrawOutcomeId,
+            homeDrawOdds        = homeDrawOdds,
+            awayDrawOdds        = awayDrawOdds,
+            isPreMatch          = isPreMatch,
+            homeScore           = score?.get("home")?.asInt(),
+            awayScore           = score?.get("away")?.asInt(),
+            matchMinute         = clock?.get("minute")?.asInt(),
+            capturedAt          = LocalDateTime.now()
         )
         return oddsSnapshotRepository.save(snapshot)
     }
@@ -320,12 +411,17 @@ class OddsMonitorService(
         val homeOutcomeId: Long?,
         val drawOutcomeId: Long?,
         val awayOutcomeId: Long?,
+        val homeDrawOutcomeId: Long?,   // 1X double chance outcome ID
+        val awayDrawOutcomeId: Long?,   // X2 double chance outcome ID
+        val homeDrawOdds: Double?,      // 1X decimal odds
+        val awayDrawOdds: Double?,      // X2 decimal odds
     )
 
     // Works for both sources:
     //   betoffer endpoint:  {"betOffers": [...]}
     //   in-play wrapper:    {"event": {...}, "betOffers": [...], "liveData": {...}}
     // Finds the Full Time (1X2) bet offer and extracts OT_ONE/OT_CROSS/OT_TWO.
+    // Also finds the Double Chance offer for 1X (OT_ONE_X) and X2 (OT_X_TWO).
     // Odds are milliunits — divide by 1000. Outcome IDs are needed for coupon placement.
     private fun parseOdds(json: JsonNode, matchDesc: String = "?"): ParsedOdds? {
         return try {
@@ -347,13 +443,41 @@ class OddsMonitorService(
             val drawOdds = drawNode["odds"]?.asDouble()?.div(1000) ?: return null
             val awayOdds = awayNode["odds"]?.asDouble()?.div(1000) ?: return null
 
+            // Parse Double Chance market for Path A (LOSING_BY_1) bets.
+            // Kambi uses OT_ONE_X (1X) and OT_X_TWO (X2) as outcome types.
+            // With lang=es_CO the API may return "Doble Oportunidad" in the label field
+            // rather than "Double Chance" in englishLabel — match both.
+            val doubleChanceBo = betOffers.firstOrNull {
+                val eng = it["criterion"]?.get("englishLabel")?.asText() ?: ""
+                val loc = it["criterion"]?.get("label")?.asText() ?: ""
+                eng.contains("Double Chance", ignoreCase = true) ||
+                loc.contains("Doble Oportunidad", ignoreCase = true)
+            }
+            if (doubleChanceBo == null) {
+                val labels = betOffers.mapNotNull { it["criterion"]?.get("englishLabel")?.asText() }
+                log.debug("No Double Chance market found for {} — available criteria: {}", matchDesc, labels)
+            }
+            val dcOutcomes = doubleChanceBo?.get("outcomes")
+            val homeDrawNode = dcOutcomes?.firstOrNull {
+                val t = it["type"]?.asText() ?: ""
+                t == "OT_ONE_X" || t == "OT_HOME_DRAW" || t == "OT_ONE_OR_CROSS"
+            }
+            val awayDrawNode = dcOutcomes?.firstOrNull {
+                val t = it["type"]?.asText() ?: ""
+                t == "OT_X_TWO" || t == "OT_DRAW_AWAY" || t == "OT_CROSS_OR_TWO"
+            }
+
             ParsedOdds(
-                homeWinOdds   = homeOdds,
-                drawOdds      = drawOdds,
-                awayWinOdds   = awayOdds,
-                homeOutcomeId = homeNode["id"]?.asLong(),
-                drawOutcomeId = drawNode["id"]?.asLong(),
-                awayOutcomeId = awayNode["id"]?.asLong(),
+                homeWinOdds       = homeOdds,
+                drawOdds          = drawOdds,
+                awayWinOdds       = awayOdds,
+                homeOutcomeId     = homeNode["id"]?.asLong(),
+                drawOutcomeId     = drawNode["id"]?.asLong(),
+                awayOutcomeId     = awayNode["id"]?.asLong(),
+                homeDrawOutcomeId = homeDrawNode?.get("id")?.asLong(),
+                awayDrawOutcomeId = awayDrawNode?.get("id")?.asLong(),
+                homeDrawOdds      = homeDrawNode?.get("odds")?.asDouble()?.div(1000),
+                awayDrawOdds      = awayDrawNode?.get("odds")?.asDouble()?.div(1000),
             )
         } catch (e: Exception) {
             log.warn("Failed to parse odds for {} from Kambi JSON: {}", matchDesc, e.message)
@@ -371,15 +495,17 @@ class OddsMonitorService(
         minute: String,
         betResult: BetResult,
         scenario: String,
+        betMarket: String,
     ): String {
         val favoriteTeam = when (favoriteSide) {
             "HOME" -> match.homeTeam
             "AWAY" -> match.awayTeam
             else   -> "Draw"
         }
-        val header = when (scenario) {
-            "TIED_HALFTIME" -> "⏱️ BET OPPORTUNITY — FAVORITE TIED AT HALFTIME"
-            else            -> "⚽ BET OPPORTUNITY — FAVORITE LOSING (comeback)"
+        val header = when {
+            scenario == "TIED_HALFTIME"      -> "⏱️ BET OPPORTUNITY — FAVORITE TIED AT HALFTIME"
+            betMarket == "DOBLE_OPORTUNIDAD" -> "⚽ BET OPPORTUNITY — DOBLE OPORTUNIDAD (comeback)"
+            else                             -> "⚽ BET OPPORTUNITY — FAVORITE LOSING (comeback)"
         }
         val betLine = when (betResult) {
             is BetResult.Placed -> "✅ Bet placed: ${"%,d".format(betResult.stake)} COP @ ${"%.2f".format(currentOdds)}"
