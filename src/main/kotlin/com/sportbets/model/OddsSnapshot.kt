@@ -76,6 +76,10 @@ data class OddsSnapshot(
     @Column(name = "away_draw_odds")
     val awayDrawOdds: Double? = null,      // X2 odds
 
+    /** Kambi period ID for non-football sports (QUARTER1/2/3/4, HALFTIME, etc.) */
+    @Column(name = "period_id")
+    val periodId: String? = null,
+
     @Column(name = "captured_at", nullable = false)
     val capturedAt: LocalDateTime = LocalDateTime.now()
 ) {

@@ -16,6 +16,8 @@ interface MatchRepository : JpaRepository<Match, Long> {
 
     fun findByStatus(status: MatchStatus): List<Match>
 
+    fun findByStatusAndSport(status: MatchStatus, sport: String): List<Match>
+
     /** Upcoming matches in a given date window (e.g. next 7 days) */
     fun findByStatusAndMatchDateBetween(
         status: MatchStatus,

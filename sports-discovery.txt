@@ -1,0 +1,88 @@
+======================================================================
+BETPLAY SPORTS DISCOVERY — 19 active sports found (of 32 probed)
+======================================================================
+
+SPORT SLUG                     UPCOMING   LIVE  COMPETITIONS
+----------------------------------------------------------------------
+football                            582     37  1 Lyga, 1. HNL Liga, 1ª División, 2. Bundesliga, 2. Liga … (+129 more)
+basketball                           84      4  1. SKL, B.League, BBL, Baloncesto Superior Nacional, CBA … (+19 more)
+esports                              69      2  1w Essence, BC Europa serie 1, BLAST Major, CBLOL, CCT Challengers EU Series … (+26 more)
+tennis                               37      2  Abidjan, Cagliari, Estados Unidos - Newport Beach, Francavilla, Goyang … (+11 more)
+baseball                             33      3  Beisbol profesional chino, KBO League, Liga Mexicana, MLB, NCAA … (+1 more)
+boxing                               29      0  Combates sin confirmar, Próximos combates
+handball                             28      0  1ª División, 2. Bundesliga, Bundesliga, Bundesliga - Femeninos, Dame Håndbold Ligaen … (+9 more)
+golf                                 24      0  Cadillac Championship, Turkish Airlines Open
+table_tennis                         20      3  Liga Pro checa, TT Elite Series
+ice_hockey                           21      0  AHL, Campeonato Mundial - División I, DEL Bundesliga, Euro Hockey Tour, Liga … (+3 more)
+cricket                               7      0  Encuentros, IPL, Pakistan Super Liga
+rugby_league                          5      0  Estado de origen (F), NRL, Super Liga
+volleyball                            4      0  Extraliga, PlusLiga, SuperLega, Superliga (F)
+rugby_union                           4      0  Copa Challenge Europea, Copa de Campeones Europea, Internacional sub-20
+darts                                 4      0  Premier League de Dardos
+futsal                                2      0  Liga de Campeones de Fútbol Sala de la UEFA
+netball                               2      0  Super Netball
+american_football                     1      0  UFL
+snooker                               1      0  Campeonato del Mundo
+
+======================================================================
+SAMPLE application.yml PATHS FOR ACTIVE SPORTS
+======================================================================
+# football (582 upcoming, 37 live)
+events-path: /offering/v2018/betplay/listView/football/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/football/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# basketball (84 upcoming, 4 live)
+events-path: /offering/v2018/betplay/listView/basketball/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/basketball/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# esports (69 upcoming, 2 live)
+events-path: /offering/v2018/betplay/listView/esports/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/esports/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# tennis (37 upcoming, 2 live)
+events-path: /offering/v2018/betplay/listView/tennis/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/tennis/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# baseball (33 upcoming, 3 live)
+events-path: /offering/v2018/betplay/listView/baseball/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/baseball/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# boxing (29 upcoming, 0 live)
+events-path: /offering/v2018/betplay/listView/boxing/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/boxing/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# handball (28 upcoming, 0 live)
+events-path: /offering/v2018/betplay/listView/handball/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/handball/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# golf (24 upcoming, 0 live)
+events-path: /offering/v2018/betplay/listView/golf/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/golf/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# table_tennis (20 upcoming, 3 live)
+events-path: /offering/v2018/betplay/listView/table_tennis/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/table_tennis/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# ice_hockey (21 upcoming, 0 live)
+events-path: /offering/v2018/betplay/listView/ice_hockey/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/ice_hockey/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# cricket (7 upcoming, 0 live)
+events-path: /offering/v2018/betplay/listView/cricket/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/cricket/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# rugby_league (5 upcoming, 0 live)
+events-path: /offering/v2018/betplay/listView/rugby_league/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/rugby_league/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# volleyball (4 upcoming, 0 live)
+events-path: /offering/v2018/betplay/listView/volleyball/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/volleyball/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# rugby_union (4 upcoming, 0 live)
+events-path: /offering/v2018/betplay/listView/rugby_union/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/rugby_union/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# darts (4 upcoming, 0 live)
+events-path: /offering/v2018/betplay/listView/darts/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/darts/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# futsal (2 upcoming, 0 live)
+events-path: /offering/v2018/betplay/listView/futsal/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/futsal/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# netball (2 upcoming, 0 live)
+events-path: /offering/v2018/betplay/listView/netball/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/netball/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# american_football (1 upcoming, 0 live)
+events-path: /offering/v2018/betplay/listView/american_football/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/american_football/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+# snooker (1 upcoming, 0 live)
+events-path: /offering/v2018/betplay/listView/snooker/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+live-path:   /offering/v2018/betplay/listView/snooker/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+
+Inactive slugs: mixed_martial_arts, cycling, athletics, motorsport, water_polo, beach_volleyball, swimming, badminton, field_hockey, floorball, bandy, bowls, aussie_rules

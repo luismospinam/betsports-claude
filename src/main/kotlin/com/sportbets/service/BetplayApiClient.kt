@@ -22,6 +22,8 @@ class BetplayApiClient(
     @Value("\${betplay.api.events-path}") private val eventsPath: String,
     @Value("\${betplay.api.odds-path}") private val oddsPath: String,
     @Value("\${betplay.api.live-path}") private val livePath: String,
+    @Value("\${betplay.basketball.api.events-path}") private val basketballEventsPath: String,
+    @Value("\${betplay.basketball.api.live-path}") private val basketballLivePath: String,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -57,6 +59,16 @@ class BetplayApiClient(
      */
     fun fetchLiveMatches(): JsonNode? {
         val url = "$baseUrl$livePath&ncid=${System.currentTimeMillis()}"
+        return getJson(url)
+    }
+
+    fun fetchBasketballUpcomingMatches(): JsonNode? {
+        val url = "$baseUrl$basketballEventsPath&ncid=${System.currentTimeMillis()}"
+        return getJson(url)
+    }
+
+    fun fetchBasketballLiveMatches(): JsonNode? {
+        val url = "$baseUrl$basketballLivePath&ncid=${System.currentTimeMillis()}"
         return getJson(url)
     }
 

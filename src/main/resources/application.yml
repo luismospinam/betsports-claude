@@ -49,7 +49,8 @@ betplay:
 
   monitor:
     # Minimum odds rise (%) to trigger — filters out noise
-    odds-rise-threshold-pct: 20.0
+    # 40% threshold: +42.6% EV (vs +32.8% at 30%), 68 qualifying bets vs 82 — better quality
+    odds-rise-threshold-pct: 40.0
     # Maximum odds rise (%) allowed — above this suggests collapse (red card, 2+ goals, injury)
     odds-rise-max-pct: 100.0
     # Maximum alerts per match (spam guard)
@@ -58,20 +59,26 @@ betplay:
     min-match-minute: 1
     max-match-minute: 80
     # Only target genuine pre-match favorites (odds ≤ this value)
+    # 1.55 ceiling: 72 bets at 57.7% win rate (+20.1% EV) vs 62 bets at 54.1% (+10% EV) at 1.50
     max-baseline-odds: 1.55
     # Don't bet if market has given up (current odds above this)
-    max-current-odds: 4.50
-    # Path A: use Doble Oportunidad only when outright odds are at or above this value
-    double-chance-min-odds: 1.9
+    # Raised to 3.00: 2.50–2.99 DC is near break-even; ≥3.00 outright is +25% EV (5 bets)
+    max-current-odds: 3.00
+    # Path A DC market window: use Doble Oportunidad only within [min, max) odds range.
+    #   Below min  → RESULTADO_FINAL (rare — team still strong favorite)
+    #   [min, max) → DOBLE_OPORTUNIDAD (DC always beats outright win rate across all bands)
+    #   max+       → RESULTADO_FINAL (≥3.00 outright has +25% EV; DC also positive but lower)
+    # DC consistently wins vs outright in every band 1.50–2.99; outright only wins above 3.00
+    double-chance-min-odds: 1.50
+    double-chance-max-odds: 3.00
 
     halftime:
-      # Bet on tied genuine favorites near halftime (Path B trigger)
-      enabled: true
+      # TIED_HALFTIME disabled — EV is -28% at every threshold tested (46.5% win rate,
+      # needs 50.5% to break even at avg 1.98 odds). No sub-segment has positive EV.
+      enabled: false
       min-minute: 10
       max-minute: 43
-      # Lower threshold than Path A — tied team just needs to score once
       odds-rise-threshold-pct: 20.0
-      # Slightly higher ceiling allowed since risk profile is lower
       max-current-odds: 2.50
 
   credentials:
@@ -100,6 +107,38 @@ betplay:
     live-odds-ms: 45000
     # Drain Discord alert queue (every 30 seconds)
     discord-send-ms: 30000
+
+  basketball:
+    api:
+      events-path: /offering/v2018/betplay/listView/basketball/all/all/all/matches.json?lang=es_CO&market=CO&client_id=2&channel_id=1&useCombined=true
+      live-path: /offering/v2018/betplay/listView/basketball/all/all/all/in-play.json?lang=es_CO&market=CO&client_id=2&channel_id=1
+
+    monitor:
+      # Minimum odds rise (%) to trigger — basketball odds are more volatile, 30% filters noise
+      odds-rise-threshold-pct: 20.0
+      # Above this = collapse (injury, blowout in progress) — skip
+      odds-rise-max-pct: 100.0
+      # Max alerts per match
+      max-alerts-per-match: 1
+      # Only target genuine pre-match favorites (moneyline ≤ this)
+      max-baseline-odds: 1.50
+      # Don't bet if market has given up
+      max-current-odds: 3.00
+      # Favorite must be losing by at least this many points
+      min-point-deficit: 0
+      # Favorite losing by more than this = likely unrecoverable, skip
+      max-point-deficit: 10
+      # Periods in which we allow betting (comma-separated Kambi periodId values)
+      # HALFTIME = between Q2 and Q3 (best — max uncertainty, full half remaining)
+      # QUARTER3 = 3rd quarter in progress
+      # QUARTER4 = 4th quarter (still time to recover, but riskier)
+      bet-periods: "QUARTER2,HALFTIME,QUARTER3"
+
+    scheduler:
+      match-sync-ms: 14400000
+      live-sync-ms: 60000
+      pre-match-odds-ms: 300000
+      live-odds-ms: 45000
 
 # ============================================================
 # Discord webhook

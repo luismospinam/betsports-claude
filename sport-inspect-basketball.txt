@@ -1,0 +1,206 @@
+======================================================================
+SPORT OFFERS INSPECTOR — basketball
+======================================================================
+
+LIVE EVENTS: 15
+
+--- LIVE EVENT SAMPLE (first event) ---
+  id:          1027497823
+  name:        Universidad De Concepción - CD Español de Talca 
+  group:       Liga Nacional
+  start:       2026-05-02T23:00:00Z
+  state:       STARTED
+  --- liveData ---
+  liveData raw:
+    {
+      "eventId" : 1027497823,
+      "matchClock" : {
+        "minute" : 38,
+        "second" : 21,
+        "minutesLeftInPeriod" : 1,
+        "secondsLeftInMinute" : 39,
+        "period" : "4º Cuarto",
+        "running" : false,
+        "periodId" : "QUARTER4",
+        "version" : 1777768659858
+      },
+      "score" : {
+        "home" : "103",
+        "away" : "75",
+        "info" : "Q1: 26-22 | Q2: 19-20 | Q3: 33-17 | Q4: 25-16",
+        "who" : "HOME",
+        "version" : 1777768639772
+      },
+      "liveStatistics" : [ ]
+    }
+
+[LIVE EVENT 1027497823 [client_id=2]] — 0 bet offers
+
+[LIVE EVENT 1027497823 [client_id=200]] — 0 bet offers
+
+UPCOMING EVENTS: 88
+
+--- UPCOMING EVENT SAMPLE (first event) ---
+  id:          1027463542
+  name:        Gaiteros del Zulia - Spartans Distrito Capital
+  group:       SPB
+  start:       2026-05-02T23:00:00Z
+  state:       STARTED
+  --- betOffers in listView response (3 offers) ---
+    [Prórroga incluida]  OT_ONE odds=1080  |  OT_TWO odds=5800
+    [Hándicap de Puntos - Prórroga incluida]  OT_ONE odds=1870  |  OT_TWO odds=1770
+    [Total de puntos - Prórroga incluida]  OT_OVER odds=1810  |  OT_UNDER odds=1830
+
+[UPCOMING EVENT 1027463542] — 3 bet offers
+  [catId=1] Hándicap de Puntos - Prórroga incluida
+      id=4168412693 OT_ONE(Gaiteros del Zulia) odds=1870 line=-7500
+      id=4168412694 OT_TWO(Spartans Distrito Capital) odds=1770 line=7500
+  [catId=2] Prórroga incluida
+      id=4168395093 OT_ONE(Gaiteros del Zulia) odds=1080
+      id=4168395094 OT_TWO(Spartans Distrito Capital) odds=5800
+  [catId=6] Total de puntos - Prórroga incluida
+      id=4168395418 OT_OVER(Más de) odds=1810 line=166500
+      id=4168395419 OT_UNDER(Menos de) odds=1830 line=166500
+
+[UPCOMING EVENT 1027497823 (2nd sample)] — 0 bet offers
+
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+AGGREGATE: all criterion labels + outcome types seen across 10 upcoming events
+======================================================================
+  1+ robos del jugador - Prórroga incluida      → OT_YES
+  1+ tapones del jugador - Prórroga incluida    → OT_YES
+  1.ª parte                                     → OT_CROSS, OT_ONE, OT_TWO
+  10+ asistencias del jugador - Prórroga incluida → OT_YES
+  10+ rebotes del jugador - Prórroga incluida   → OT_YES
+  18+ puntos anotados por el jugador - Prórroga incluida → OT_YES
+  19+ puntos anotados por el jugador - Prórroga incluida → OT_YES
+  2+ asistencias del jugador - Prórroga incluida → OT_YES
+  2+ tapones del jugador - Prórroga incluida    → OT_YES
+  2+ triples anotados por el jugador - Prórroga incluida → OT_YES
+  20+ puntos anotados por el jugador - Prórroga incluida → OT_YES
+  21+ puntos anotados por el jugador - Prórroga incluida → OT_YES
+  22+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  23+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  24+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  26+ puntos anotados por el jugador - Prórroga incluida → OT_YES
+  27+ puntos anotados por el jugador - Prórroga incluida → OT_YES
+  28+ puntos anotados por el jugador - Prórroga incluida → OT_YES
+  29+ puntos anotados por el jugador - Prórroga incluida → OT_YES
+  29+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  2ª mitad - Prórroga incluida                  → OT_CROSS, OT_ONE, OT_TWO
+  3+ asistencias del jugador - Prórroga incluida → OT_YES
+  3+ rebotes del jugador - Prórroga incluida    → OT_YES
+  30+ puntos anotados por el jugador - Prórroga incluida → OT_YES
+  30+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  31+ puntos anotados por el jugador - Prórroga incluida → OT_YES
+  31+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  32+ puntos anotados por el jugador - Prórroga incluida → OT_YES
+  33+ puntos anotados por el jugador - Prórroga incluida → OT_YES
+  34+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  35+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  36+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  37+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  38+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  39+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  4+ triples anotados por el jugador - Prórroga incluida → OT_YES
+  40+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  41+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  42+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  48+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  49+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  5+ asistencias del jugador - Prórroga incluida → OT_YES
+  50+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  51+ puntos, rebotes y asistencias del jugador - Prórroga incluida → OT_YES
+  6+ rebotes del jugador - Prórroga incluida    → OT_YES
+  6+ triples anotados por el jugador - Prórroga incluida → OT_YES
+  7+ rebotes del jugador - Prórroga incluida    → OT_YES
+  8+ asistencias del jugador - Prórroga incluida → OT_YES
+  8+ rebotes del jugador - Prórroga incluida    → OT_YES
+  Apuesta sin empate - 1.ª parte                → OT_ONE, OT_TWO
+  Apuesta sin empate - Cuarto 1                 → OT_ONE, OT_TWO
+  Apuesta sin empate - Cuarto 2                 → OT_ONE, OT_TWO
+  Con empate no hay apuesta - 2ª parte- prórroga incluida → OT_ONE, OT_TWO
+  Cuarto 1                                      → OT_CROSS, OT_ONE, OT_TWO
+  Cuarto 2                                      → OT_CROSS, OT_ONE, OT_TWO
+  Hándicap - 1.ª parte                          → OT_ONE, OT_TWO
+  Hándicap - 2ª mitad - Prórroga incluida       → OT_ONE, OT_TWO
+  Hándicap - Cuarto 1                           → OT_ONE, OT_TWO
+  Hándicap - Cuarto 2                           → OT_ONE, OT_TWO
+  Hándicap de Puntos - Prórroga incluida        → OT_ONE, OT_TWO
+  Prórroga incluida                             → OT_ONE, OT_TWO
+  Puntos totales de Philadelphia 76ers - Prórroga incluida → OT_OVER, OT_UNDER
+  Resultado al final del 4.º cuarto (final del partido sin prorroga incluida) → OT_CROSS, OT_ONE, OT_TWO
+  Total de puntos - 2ª mitad - Prórroga incluida → OT_OVER, OT_UNDER
+  Total de puntos - Cuarto 1                    → OT_OVER, OT_UNDER
+  Total de puntos - Cuarto 2                    → OT_OVER, OT_UNDER
+  Total de puntos - Prórroga incluida           → OT_OVER, OT_UNDER
+  Total de puntos del Boston Celtics - Incluyendo prórroga → OT_OVER, OT_UNDER

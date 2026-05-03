@@ -61,6 +61,7 @@ class MatchSyncService(
         for (wrapper in events) {
             val externalId = wrapper["event"]?.get("id")?.asText() ?: continue
             val match = matchRepository.findByExternalId(externalId) ?: continue
+            if (match.sport != "FOOTBALL") continue
             if (match.status != MatchStatus.LIVE) {
                 val liveData = wrapper["liveData"]
                 val score = liveData?.get("score")
@@ -82,9 +83,9 @@ class MatchSyncService(
      * Fallback in case the live API doesn't return all matches.
      */
     @Transactional
-    fun markStartedMatchesAsLive() {
+    fun markStartedMatchesAsLive(sport: String = "FOOTBALL") {
         val now = LocalDateTime.now()
-        val upcoming = matchRepository.findByStatus(MatchStatus.UPCOMING)
+        val upcoming = matchRepository.findByStatusAndSport(MatchStatus.UPCOMING, sport)
         val started = upcoming.filter { it.matchDate.isBefore(now) }
         started.forEach {
             matchRepository.save(it.copy(status = MatchStatus.LIVE, updatedAt = now))
@@ -92,8 +93,51 @@ class MatchSyncService(
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Basketball
+    // -------------------------------------------------------------------------
+
+    @Transactional
+    fun syncUpcomingBasketballMatches() {
+        log.info("Syncing upcoming basketball matches from Betplay...")
+        val json = apiClient.fetchBasketballUpcomingMatches() ?: run {
+            log.warn("No data received for upcoming basketball matches")
+            return
+        }
+        val events = json["events"] ?: return
+        if (!events.isArray) return
+        var created = 0; var skipped = 0
+        for (wrapper in events) {
+            val match = parseMatch(wrapper, sport = "BASKETBALL") ?: continue
+            if (matchRepository.existsByExternalId(match.externalId)) { skipped++ }
+            else { matchRepository.save(match); created++
+                log.info("Saved basketball match: {} vs {} on {}", match.homeTeam, match.awayTeam, match.matchDate) }
+        }
+        log.info("Basketball sync complete - created: {}, skipped: {}", created, skipped)
+    }
+
+    @Transactional
+    fun syncLiveBasketballStatuses() {
+        val json = apiClient.fetchBasketballLiveMatches() ?: return
+        val events = json["events"] ?: return
+        if (!events.isArray) return
+        for (wrapper in events) {
+            val externalId = wrapper["event"]?.get("id")?.asText() ?: continue
+            val match = matchRepository.findByExternalId(externalId) ?: continue
+            if (match.sport != "BASKETBALL") continue
+            if (match.status != MatchStatus.LIVE) {
+                matchRepository.save(match.copy(status = MatchStatus.LIVE, updatedAt = LocalDateTime.now()))
+                log.info("Basketball match {} vs {} is now LIVE", match.homeTeam, match.awayTeam)
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Shared helpers
+    // -------------------------------------------------------------------------
+
     // Each item in Kambi's events array is a wrapper: {"event": {...}, "betOffers": [...]}
-    private fun parseMatch(wrapper: JsonNode): Match? {
+    private fun parseMatch(wrapper: JsonNode, sport: String = "FOOTBALL"): Match? {
         return try {
             val e = wrapper["event"] ?: return null
             // Esports matches have termKey "esports_football" in their path — skip them
@@ -108,6 +152,7 @@ class MatchSyncService(
                 competition = e["group"]?.asText()     ?: "",
                 matchDate   = parseDate(e["start"]?.asText()),
                 betplayUrl  = null,
+                sport       = sport,
                 status      = MatchStatus.UPCOMING,
                 createdAt   = LocalDateTime.now(),
                 updatedAt   = LocalDateTime.now()

@@ -50,13 +50,16 @@ class BetplayApiDiscovery : ApplicationRunner {
         "/api/", "/rest/", "/v1/", "/v2/", "/v3/", "/offering/",
         "kambi", "shapegames",
         "events", "odds", "sports", "live", "fixture",
-        "match", "market", "bet", "soccer", "football", "futbol"
+        "match", "market", "bet", "soccer", "football", "futbol",
+        "basketball", "baloncesto", "tennis", "baseball", "betoffer"
     )
 
     override fun run(args: ApplicationArguments) {
-        log.info("=== BETPLAY API DISCOVERY MODE ===")
+        val sport = args.getOptionValues("sport")?.firstOrNull() ?: "football"
+        val waitSeconds = args.getOptionValues("wait")?.firstOrNull()?.toLongOrNull() ?: 180L
+        log.info("=== BETPLAY API DISCOVERY MODE — sport: {} ===", sport)
         log.info("Launching browser. This will open a visible Chrome window...")
-        log.info("You have 90 seconds. Navigate around the soccer section.")
+        log.info("You have {} seconds. Navigate around the {} section.", waitSeconds, sport)
         log.info("Press Ctrl+C when done to see the results.")
 
         val capturedRequests = mutableListOf<CapturedRequest>()
@@ -110,19 +113,19 @@ class BetplayApiDiscovery : ApplicationRunner {
                 }
             }
 
-            log.info("Navigating to betplay.com.co/apuestas#sports-hub/football...")
+            val startUrl = "https://betplay.com.co/apuestas#sports-hub/$sport"
+            log.info("Navigating to {}...", startUrl)
             try {
                 page.navigate(
-                    "https://betplay.com.co/apuestas#sports-hub/football",
+                    startUrl,
                     Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED).setTimeout(30000.0)
                 )
             } catch (e: Exception) {
                 log.warn("Navigation timeout (normal for heavy JS sites): {}", e.message)
             }
 
-            log.info("Page loaded. Waiting 90 seconds for you to browse around...")
-            log.info("Navigate to: soccer matches, live games, any match details page")
-            Thread.sleep(90_000)
+            log.info("Page loaded. Waiting {} seconds — click into matches, live games, bet offer pages...", waitSeconds)
+            Thread.sleep(waitSeconds * 1_000)
 
             browser.close()
         }

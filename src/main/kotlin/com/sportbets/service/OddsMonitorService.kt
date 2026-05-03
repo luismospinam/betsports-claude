@@ -43,6 +43,7 @@ class OddsMonitorService(
     @Value("\${betplay.monitor.max-baseline-odds:1.80}") private val maxBaselineOdds: Double,
     @Value("\${betplay.monitor.max-current-odds:3.50}") private val maxCurrentOdds: Double,
     @Value("\${betplay.monitor.double-chance-min-odds:2.0}") private val doubleChanceMinOdds: Double,
+    @Value("\${betplay.monitor.double-chance-max-odds:9999.0}") private val doubleChanceMaxOdds: Double,
     @Value("\${betplay.monitor.halftime.enabled:true}") private val halftimeEnabled: Boolean,
     @Value("\${betplay.monitor.halftime.min-minute:35}") private val halftimeMinMinute: Int,
     @Value("\${betplay.monitor.halftime.max-minute:50}") private val halftimeMaxMinute: Int,
@@ -75,7 +76,7 @@ class OddsMonitorService(
         // Capture pre-match baseline for all upcoming matches that don't have one yet.
         // No time window restriction — odds are captured as soon as the match is synced,
         // so a baseline exists even if the app restarts close to or after kickoff.
-        val upcoming = matchRepository.findByStatus(MatchStatus.UPCOMING)
+        val upcoming = matchRepository.findByStatusAndSport(MatchStatus.UPCOMING, "FOOTBALL")
         for (match in upcoming) {
             if (oddsSnapshotRepository.findByMatchIdAndIsPreMatchTrue(match.id).isEmpty()) {
                 try {
@@ -100,7 +101,7 @@ class OddsMonitorService(
      */
     @Transactional
     fun monitorLiveOdds() {
-        val liveMatches = matchRepository.findByStatus(MatchStatus.LIVE)
+        val liveMatches = matchRepository.findByStatusAndSport(MatchStatus.LIVE, "FOOTBALL")
         if (liveMatches.isEmpty()) {
             log.debug("No live matches to monitor")
             return
@@ -259,14 +260,17 @@ class OddsMonitorService(
         val score = "${current.homeScore}-${current.awayScore}"
         val minuteStr = "${minute}'"
 
-        // Path A: use Doble Oportunidad only when outright win odds >= 2.0 (market considers
-        // the favorite a real risk). Below 2.0 the team is still likely to win outright.
+        // Path A market selection — three cases based on current outright odds:
+        //   [below min]     team still likely to win outright → bet RESULTADO_FINAL
+        //   [min, max)      DC window where EV analysis shows DC beats outright → bet DOBLE_OPORTUNIDAD
+        //   [max and above] high odds, outright EV dominates (54%+ win rate at 2.0+ odds) → bet RESULTADO_FINAL
         // Path B always bets outright win — tied team needs to score, a draw adds no value.
         val outcomeId: Long?
         val betMarket: String
         if (scenario == "LOSING_BY_1") {
             val outrightId = when (favoriteSide) { "HOME" -> current.homeOutcomeId; "AWAY" -> current.awayOutcomeId; else -> current.drawOutcomeId }
-            if (currentOdds >= doubleChanceMinOdds) {
+            val inDcWindow = currentOdds >= doubleChanceMinOdds && currentOdds < doubleChanceMaxOdds
+            if (inDcWindow) {
                 val dcId = when (favoriteSide) {
                     "HOME" -> current.homeDrawOutcomeId
                     "AWAY" -> current.awayDrawOutcomeId
@@ -275,15 +279,25 @@ class OddsMonitorService(
                 if (dcId != null) {
                     outcomeId = dcId
                     betMarket = "DOBLE_OPORTUNIDAD"
+                    log.info("Path A [DC window {}-{}]: {} vs {} odds={} → DOBLE_OPORTUNIDAD (win-or-draw)",
+                        "%.2f".format(doubleChanceMinOdds), "%.2f".format(doubleChanceMaxOdds),
+                        match.homeTeam, match.awayTeam, "%.2f".format(currentOdds))
                 } else {
-                    log.warn("Double chance outcomeId not available for {} vs {} (odds={}) — falling back to outright win",
+                    log.warn("Path A [DC window {}-{}]: {} vs {} odds={} — DC outcomeId missing, falling back to RESULTADO_FINAL",
+                        "%.2f".format(doubleChanceMinOdds), "%.2f".format(doubleChanceMaxOdds),
                         match.homeTeam, match.awayTeam, "%.2f".format(currentOdds))
                     outcomeId = outrightId
                     betMarket = "RESULTADO_FINAL"
                 }
+            } else if (currentOdds < doubleChanceMinOdds) {
+                log.info("Path A [below DC min {}]: {} vs {} odds={} → RESULTADO_FINAL (team still likely to win outright)",
+                    "%.2f".format(doubleChanceMinOdds), match.homeTeam, match.awayTeam, "%.2f".format(currentOdds))
+                outcomeId = outrightId
+                betMarket = "RESULTADO_FINAL"
             } else {
-                log.info("Path A: outright odds {} < {} for {} vs {} — betting outright win",
-                    "%.2f".format(currentOdds), "%.2f".format(doubleChanceMinOdds), match.homeTeam, match.awayTeam)
+                // currentOdds >= doubleChanceMaxOdds — above DC window
+                log.info("Path A [above DC max {}]: {} vs {} odds={} → RESULTADO_FINAL (outright EV dominates at high odds)",
+                    "%.2f".format(doubleChanceMaxOdds), match.homeTeam, match.awayTeam, "%.2f".format(currentOdds))
                 outcomeId = outrightId
                 betMarket = "RESULTADO_FINAL"
             }

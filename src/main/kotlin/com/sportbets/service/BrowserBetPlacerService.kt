@@ -1,6 +1,7 @@
 package com.sportbets.service
 
 import com.microsoft.playwright.*
+import com.microsoft.playwright.options.LoadState
 import com.microsoft.playwright.options.WaitUntilState
 import com.sportbets.util.BrowserLock
 import org.slf4j.LoggerFactory
@@ -116,9 +117,9 @@ class BrowserBetPlacerService(
         // Wait until Kambi's outcome buttons are rendered (replaces fixed 4s sleep)
         try {
             page.waitForSelector("button[class*='outcome'], .KambiBC-outcome-list__outcome",
-                Page.WaitForSelectorOptions().setTimeout(20_000.0))
+                Page.WaitForSelectorOptions().setTimeout(15_000.0))
         } catch (_: Exception) {
-            log.warn("[Browser] Outcome buttons not detected within 20s — proceeding anyway")
+            log.warn("[Browser] Outcome buttons not detected within 15s — proceeding anyway")
         }
         dismissPopups(page)
         clearBetSlip(page)
@@ -214,12 +215,12 @@ class BrowserBetPlacerService(
             "[aria-label*='balance' i]",
         )
         for (sel in loggedInSelectors) {
-            if (page.locator(sel).count() > 0) return true
+            // runCatching guards against "Execution context was destroyed" if the page is
+            // still navigating (e.g. client-side redirect not yet complete)
+            if (runCatching { page.locator(sel).count() > 0 }.getOrDefault(false)) return true
         }
         // Negative indicator: login form visible
-        val loginInput = page.locator("input[placeholder*='Usuario'], input[placeholder*='Cédula'], input[placeholder*='usuario' i]")
-        if (loginInput.count() > 0) return false
-        // Ambiguous — no login form but no confirmed logged-in element either
+        if (runCatching { page.locator("input[placeholder*='Usuario'], input[placeholder*='Cédula'], input[placeholder*='usuario' i]").count() > 0 }.getOrDefault(false)) return false
         return false
     }
 
@@ -233,7 +234,17 @@ class BrowserBetPlacerService(
             page.navigate("https://betplay.com.co",
                 Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED).setTimeout(20_000.0))
         } catch (_: Exception) {}
-        page.waitForTimeout(3_000.0)
+
+        // Betplay home does a client-side redirect to /apuestas after DOMContentLoaded.
+        // Waiting for networkidle ensures that redirect completes before we touch the DOM.
+        // Without this, calls like page.locator().count() throw "Execution context was
+        // destroyed, most likely because of a navigation" because the redirect is still
+        // in flight.
+        try {
+            page.waitForLoadState(LoadState.NETWORKIDLE, Page.WaitForLoadStateOptions().setTimeout(10_000.0))
+        } catch (_: Exception) {
+            page.waitForTimeout(3_000.0)  // fallback: fixed wait if networkidle times out
+        }
 
         // Dismiss cookie consent banner ("Valoramos tu privacidad") if present
         dismissCookieBanner(page)
@@ -267,6 +278,11 @@ class BrowserBetPlacerService(
                 page.navigate("https://betplay.com.co",
                     Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED).setTimeout(20_000.0))
             } catch (_: Exception) {}
+            try {
+                page.waitForLoadState(LoadState.NETWORKIDLE, Page.WaitForLoadStateOptions().setTimeout(10_000.0))
+            } catch (_: Exception) {
+                page.waitForTimeout(3_000.0)
+            }
 
             // Cookie clear resets consent — banner reappears on fresh load, must dismiss again
             dismissCookieBanner(page)
@@ -365,9 +381,9 @@ class BrowserBetPlacerService(
         val selector = ".mod-KambiBC-betslip-outcome__close-btn, [aria-label^='Eliminar resultado']"
         var removed = 0
         repeat(10) {
-            val btn = page.locator(selector)
-            if (btn.count() > 0) {
-                btn.first().click()
+            val hasBtn = runCatching { page.locator(selector).count() > 0 }.getOrDefault(false)
+            if (hasBtn) {
+                runCatching { page.locator(selector).first().click() }
                 page.waitForTimeout(400.0)
                 removed++
             }
@@ -381,16 +397,65 @@ class BrowserBetPlacerService(
         // market is suspended (e.g. after a goal). Playwright retries every 500ms internally.
         val clickTimeout = Locator.ClickOptions().setTimeout(120_000.0)
 
+        // Primary path: click by Kambi outcomeId.
+        // Kambi doesn't standardise where it puts the outcome ID in the DOM — scan every
+        // attribute on every visible button (and its closest <li> wrapper) for a value that
+        // matches the outcomeId. Avoids all section-label ambiguity.
+        if (outcomeId != null) {
+            val clicked = runCatching {
+                page.evaluate("""
+                    (id) => {
+                        const idStr = String(id);
+                        const buttons = Array.from(document.querySelectorAll('button'));
+                        for (const btn of buttons) {
+                            if (btn.offsetParent === null) continue;
+                            // Check button's own attributes
+                            for (const attr of btn.attributes) {
+                                if (attr.value === idStr) {
+                                    btn.scrollIntoView({ block: 'center' });
+                                    btn.click();
+                                    return 'btn-attr:' + attr.name;
+                                }
+                            }
+                            // Check closest <li> or <div> wrapper (Kambi often puts IDs there)
+                            const wrapper = btn.closest('li') || btn.closest('[data-outcome-id]') || btn.closest('[data-id]');
+                            if (wrapper) {
+                                for (const attr of wrapper.attributes) {
+                                    if (attr.value === idStr) {
+                                        btn.scrollIntoView({ block: 'center' });
+                                        btn.click();
+                                        return 'wrapper-attr:' + attr.name;
+                                    }
+                                }
+                            }
+                        }
+                        return 'not-found';
+                    }
+                """, outcomeId)
+            }.getOrNull()?.toString()
+
+            if (clicked != null && clicked != "not-found") {
+                log.info("[Browser] Clicked outcome by outcomeId={} ({})", outcomeId, clicked)
+                return true
+            }
+            log.debug("[Browser] outcomeId={} not found in button attributes — falling back to section search", outcomeId)
+        }
+
         // Double Chance (Doble Oportunidad): 3-button layout — 1X at 0, 12 at 1, X2 at 2.
         // Outright win (Resultado Final): 3-button layout — HOME=0, DRAW=1, AWAY=2.
-        val positionIndex = if (betMarket == "DOBLE_OPORTUNIDAD") {
-            when (favoriteSide) {
+        // Basketball moneyline (Prórroga incluida): 2-button layout — HOME=0, AWAY=1 (no draw).
+        val positionIndex = when (betMarket) {
+            "DOBLE_OPORTUNIDAD" -> when (favoriteSide) {
                 "HOME" -> 0  // 1X: home win or draw
                 "AWAY" -> 2  // X2: away win or draw (position 1 is "12" — home or away, no draw)
                 else   -> 0
             }
-        } else {
-            when (favoriteSide) {
+            "PRORROGA_INCLUIDA" -> when (favoriteSide) {
+                "HOME" -> 0  // OT_ONE
+                "AWAY" -> 1  // OT_TWO — no draw button in basketball
+                else   -> 0
+            }
+            else -> when (favoriteSide) {  // RESULTADO_FINAL
                 "HOME" -> 0
                 "DRAW" -> 1
                 "AWAY" -> 2
@@ -398,7 +463,11 @@ class BrowserBetPlacerService(
             }
         }
 
-        val sectionLabel = if (betMarket == "DOBLE_OPORTUNIDAD") "Doble Oportunidad" else "Resultado Final"
+        val sectionLabel = when (betMarket) {
+            "DOBLE_OPORTUNIDAD" -> "Doble Oportunidad"
+            "PRORROGA_INCLUIDA" -> "Prórroga incluida"
+            else                 -> "Resultado Final"
+        }
 
         if (betMarket == "DOBLE_OPORTUNIDAD") {
             // Scroll to trigger lazy rendering of all sections
@@ -497,27 +566,41 @@ class BrowserBetPlacerService(
         }
 
         // Use JavaScript to find the section header by its visible text (innerText).
-        // We use innerText (not textContent) to match what the user sees, ignoring hidden
-        // nodes and icon characters. We search in reverse so the innermost matching
-        // element is found first (e.g. the label span inside the header, not its container).
-        // Accordion headers always have child elements (chevron icons) so we cannot
-        // require el.children.length === 0.
+        // findFirst=true  → search forward (first match in DOM order = top of page).
+        //   Used for PRORROGA_INCLUIDA: "Prórroga incluida" also appears as a sub-label
+        //   inside "Hándicap de Puntos – Prórroga incluida" and "Total de puntos – Prórroga
+        //   incluida". The moneyline section is always rendered first on the page, so the
+        //   first DOM match is always the correct one.
+        // findFirst=false → search in reverse (last/innermost match). Default for soccer.
+        val findFirst = betMarket == "PRORROGA_INCLUIDA"
+
         val jsExpandResult = runCatching {
             page.evaluate("""
-                (label) => {
-                    const all = Array.from(document.querySelectorAll('*')).reverse();
+                ([label, findFirst]) => {
+                    let all = Array.from(document.querySelectorAll('*'));
+                    if (!findFirst) all = all.reverse();
                     const header = all.find(el =>
                         el.offsetParent !== null && (el.innerText || '').trim().split('\n')[0].trim() === label
                     );
                     if (!header) return 'header-not-found';
                     header.scrollIntoView({ block: 'center' });
-                    // Check if section is already expanded (has visible outcome buttons nearby)
+                    // Check if section is already expanded (has visible outcome buttons nearby).
+                    // Filter to buttons whose text looks like odds (e.g. "2.48"), a DC label
+                    // (e.g. "1X"), or multi-line basketball buttons ("Team Name\n4.20").
+                    // The /\d+[,.]\d+/ check catches any text that *contains* a decimal odds
+                    // value, which handles the basketball "Apuestas Seleccionadas" flat view
+                    // where each outcome button shows "TeamName\nOdds" as multi-line text.
+                    // Section header buttons (e.g. "Prórroga incluida") never contain a decimal.
+                    const isOutcomeBtn = b => {
+                        const t = (b.innerText || '').trim();
+                        return /^\d+[,.]?\d*$/.test(t) || /^[1X2]+$/.test(t) || /\d+[,.]\d+/.test(t);
+                    };
                     let probe = header.parentElement;
                     for (let i = 0; i < 8; i++) {
                         if (!probe || probe === document.body) break;
                         const btns = Array.from(probe.querySelectorAll(
                             'button[class*="outcome"], .KambiBC-outcome-list__outcome, [class*="OutcomeButton"], button'
-                        )).filter(b => b.offsetParent !== null);
+                        )).filter(b => b.offsetParent !== null && isOutcomeBtn(b));
                         if (btns.length > 0) return 'already-expanded';
                         probe = probe.parentElement;
                     }
@@ -537,7 +620,7 @@ class BrowserBetPlacerService(
                     header.click();
                     return 'expanded-fallback';
                 }
-            """, sectionLabel)
+            """, listOf(sectionLabel, findFirst))
         }.getOrNull()?.toString()
 
         if (jsExpandResult == "header-not-found") {
@@ -549,33 +632,72 @@ class BrowserBetPlacerService(
             val jsClicked = runCatching {
                 page.evaluate("""
                     (args) => {
-                        const [label, index] = args;
-                        const all = Array.from(document.querySelectorAll('*')).reverse();
+                        const [label, index, findFirst] = args;
+                        let all = Array.from(document.querySelectorAll('*'));
+                        if (!findFirst) all = all.reverse();
                         const header = all.find(el =>
                             el.offsetParent !== null && (el.innerText || '').trim().split('\n')[0].trim() === label
                         );
                         if (!header) return 'header-not-found';
+                        const isOutcomeBtn = b => {
+                            const t = (b.innerText || '').trim();
+                            return /^\d+[,.]?\d*$/.test(t) || /^[1X2]+$/.test(t) || /\d+[,.]\d+/.test(t);
+                        };
+
+                        // Strategy 1: walk UP at most 3 levels.
+                        // A section wrapper is always 1-2 levels above the header. Capping at 3
+                        // prevents reaching the broad "Apuestas Seleccionadas" container that
+                        // groups unrelated markets (e.g. "Siguiente tiro de campo") together with
+                        // "Prórroga incluida", which would cause the wrong button to be picked.
                         let container = header.parentElement;
-                        for (let i = 0; i < 8; i++) {
+                        for (let i = 0; i < 3; i++) {
                             if (!container || container === document.body) break;
                             const btns = Array.from(container.querySelectorAll(
                                 'button[class*="outcome"], .KambiBC-outcome-list__outcome, [class*="OutcomeButton"], button'
-                            )).filter(b => b.offsetParent !== null);
+                            )).filter(b => b.offsetParent !== null && isOutcomeBtn(b));
                             if (btns.length > index) {
                                 btns[index].scrollIntoView({ block: 'center' });
                                 btns[index].click();
-                                return 'clicked-' + btns.length;
+                                return 'clicked-up' + i + '-' + btns.length;
                             }
                             container = container.parentElement;
                         }
+
+                        // Strategy 2: walk FORWARD through siblings from the header.
+                        // Used when the DOM is flat (no per-section wrapper div). Collect outcome
+                        // buttons until we hit an element whose first text line looks like another
+                        // section header (non-numeric, non-DC-label text of meaningful length).
+                        const isSectionHeader = el => {
+                            const t = (el.innerText || '').trim().split('\n')[0].trim();
+                            return t.length > 3 && !isOutcomeBtn({innerText: t});
+                        };
+                        const collected = [];
+                        let cursor = header.nextElementSibling;
+                        let steps = 0;
+                        while (cursor && steps < 30) {
+                            if (isSectionHeader(cursor)) break;
+                            const btns = Array.from(cursor.querySelectorAll('button'))
+                                .filter(b => b.offsetParent !== null && isOutcomeBtn(b));
+                            collected.push(...btns);
+                            if (isOutcomeBtn(cursor) && cursor.tagName === 'BUTTON' && cursor.offsetParent) {
+                                collected.push(cursor);
+                            }
+                            if (collected.length > index) {
+                                collected[index].scrollIntoView({ block: 'center' });
+                                collected[index].click();
+                                return 'clicked-fwd-' + collected.length;
+                            }
+                            cursor = cursor.nextElementSibling;
+                            steps++;
+                        }
                         return 'buttons-not-found';
                     }
-                """, listOf(sectionLabel, positionIndex))
+                """, listOf(sectionLabel, positionIndex, findFirst))
             }.getOrNull()?.toString()
 
             when {
                 jsClicked != null && jsClicked.startsWith("clicked-") -> {
-                    log.info("[Browser] JS clicked outcome index {} in '{}' section ({} visible buttons)", positionIndex, sectionLabel, jsClicked.removePrefix("clicked-"))
+                    log.info("[Browser] JS clicked outcome index {} in '{}' section ({})", positionIndex, sectionLabel, jsClicked)
                     return true
                 }
                 jsClicked == "buttons-not-found" ->
@@ -634,16 +756,15 @@ class BrowserBetPlacerService(
                 if (entered.isBlank() || entered == "0") {
                     log.warn("[Browser] Stake field did not accept value via type() — trying JS dispatch")
                     page.evaluate("""
-                        (function() {
-                            const sel = '$selector';
+                        ([sel, value]) => {
                             const input = document.querySelector(sel);
                             if (!input) return;
                             const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                            setter.call(input, '$stakeCop');
+                            setter.call(input, value);
                             input.dispatchEvent(new Event('input',  { bubbles: true }));
                             input.dispatchEvent(new Event('change', { bubbles: true }));
-                        })();
-                    """)
+                        }
+                    """, listOf(selector, stakeCop.toString()))
                     page.waitForTimeout(500.0)
                 }
                 log.info("[Browser] Entered stake {} COP (field value='{}')", stakeCop, el.inputValue())

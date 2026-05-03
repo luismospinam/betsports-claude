@@ -50,6 +50,10 @@ data class Match(
     @Column(name = "final_away_score")
     val finalAwayScore: Int? = null,
 
+    /** Sport identifier — FOOTBALL or BASKETBALL */
+    @Column(name = "sport", nullable = false)
+    val sport: String = "FOOTBALL",
+
     @Column(name = "created_at", nullable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
 
