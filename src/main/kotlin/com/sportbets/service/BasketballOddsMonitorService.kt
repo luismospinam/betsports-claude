@@ -204,6 +204,8 @@ class BasketballOddsMonitorService(
                 BetResult.Skipped   -> "SKIPPED"
             },
             triggerScenario = "BASKETBALL_COMEBACK",
+            market          = "PRORROGA_INCLUIDA",
+            actualBetOdds   = currentOdds,
             triggeredAt     = LocalDateTime.now()
         ))
         log.info("BASKETBALL ALERT: {}", message)

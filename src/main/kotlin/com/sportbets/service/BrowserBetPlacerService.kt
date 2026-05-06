@@ -30,8 +30,6 @@ class BrowserBetPlacerService(
     @Value("\${betplay.betting.max-odds-deviation-pct:15.0}") private val maxOddsDeviationPct: Double,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
-    private val lastCookieClearMs = AtomicLong(0L)
-    private val cookieClearIntervalMs = 12 * 60 * 60 * 1_000L // 12 hours
 
     fun placeBet(externalId: String, outcomeId: Long?, favoriteSide: String, matchDesc: String, triggerOdds: Double, betMarket: String = "RESULTADO_FINAL"): BetResult {
         log.info("[Browser] Starting browser bet: {} {} outcomeId={} market={}", matchDesc, favoriteSide, outcomeId, betMarket)
@@ -105,6 +103,7 @@ class BrowserBetPlacerService(
 
         val url = "https://betplay.com.co/apuestas#event/$externalId"
         log.info("[Browser] Navigating to {}", url)
+        val t0 = System.currentTimeMillis()
         try {
             page.navigate(url, Page.NavigateOptions()
                 .setWaitUntil(WaitUntilState.DOMCONTENTLOADED)
@@ -113,16 +112,23 @@ class BrowserBetPlacerService(
         } catch (e: Exception) {
             log.warn("[Browser] Navigation timeout (normal for heavy JS): {}", e.message)
         }
+        log.info("[Browser] Navigation done — {}ms elapsed", System.currentTimeMillis() - t0)
 
         // Wait until Kambi's outcome buttons are rendered (replaces fixed 4s sleep)
         try {
             page.waitForSelector("button[class*='outcome'], .KambiBC-outcome-list__outcome",
                 Page.WaitForSelectorOptions().setTimeout(15_000.0))
+            log.info("[Browser] Outcome buttons detected — {}ms elapsed", System.currentTimeMillis() - t0)
         } catch (_: Exception) {
-            log.warn("[Browser] Outcome buttons not detected within 15s — proceeding anyway")
+            log.warn("[Browser] Outcome buttons not detected within 15s — proceeding anyway ({}ms elapsed)", System.currentTimeMillis() - t0)
         }
+
         dismissPopups(page)
+        log.info("[Browser] Popups dismissed — {}ms elapsed", System.currentTimeMillis() - t0)
+
         clearBetSlip(page)
+        log.info("[Browser] Betslip cleared — {}ms elapsed", System.currentTimeMillis() - t0)
+
         screenshot(page, "logs/bet-browser-$tag-1-loaded.png")
 
         if (!clickOutcome(page, outcomeId, favoriteSide, matchDesc, betMarket)) {
@@ -226,27 +232,19 @@ class BrowserBetPlacerService(
 
     private fun ensureLoggedIn(page: Page, attempt: Int = 1): Boolean {
         // Always do a fresh navigation so the page generates a new betplaycaptcha token.
-        // Betplay embeds a time-sensitive CAPTCHA token in the login button's CSS class at
-        // page-load time. If the page was loaded too long ago (>90s) the server rejects
-        // the login JWT with 401 even when credentials are correct. A fresh navigate
-        // guarantees a fresh token.
+        // Navigate to Betplay home and wait for the client-side redirect to settle.
+        // Betplay does a client-side redirect to /apuestas after DOMContentLoaded; waiting
+        // for networkidle ensures the redirect completes before we touch the DOM.
         try {
             page.navigate("https://betplay.com.co",
                 Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED).setTimeout(20_000.0))
         } catch (_: Exception) {}
-
-        // Betplay home does a client-side redirect to /apuestas after DOMContentLoaded.
-        // Waiting for networkidle ensures that redirect completes before we touch the DOM.
-        // Without this, calls like page.locator().count() throw "Execution context was
-        // destroyed, most likely because of a navigation" because the redirect is still
-        // in flight.
         try {
             page.waitForLoadState(LoadState.NETWORKIDLE, Page.WaitForLoadStateOptions().setTimeout(10_000.0))
         } catch (_: Exception) {
             page.waitForTimeout(3_000.0)  // fallback: fixed wait if networkidle times out
         }
 
-        // Dismiss cookie consent banner ("Valoramos tu privacidad") if present
         dismissCookieBanner(page)
 
         if (isLoggedIn(page)) {
@@ -261,39 +259,17 @@ class BrowserBetPlacerService(
 
         log.info("[Browser] Not logged in — attempting automatic login (attempt {})", attempt)
         return try {
-            // Clear Betplay cookies and storage every 12 hours to reset fraud-detection
-            // flags that accumulate from repeated automated login attempts.
-            // Incognito always works because it has no such accumulated state — periodic
-            // clearing mimics that clean slate without doing it on every attempt.
-            val now = System.currentTimeMillis()
-            if (now - lastCookieClearMs.get() >= cookieClearIntervalMs) {
-                runCatching { page.context().clearCookies(BrowserContext.ClearCookiesOptions().setDomain("betplay.com.co")) }
-                runCatching { page.evaluate("localStorage.clear(); sessionStorage.clear();") }
-                lastCookieClearMs.set(now)
-                log.info("[Browser] Cleared Betplay cookies and storage (12h interval)")
-            }
-
-            // Re-navigate so the page generates a fresh betplaycaptcha token
-            try {
-                page.navigate("https://betplay.com.co",
-                    Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED).setTimeout(20_000.0))
-            } catch (_: Exception) {}
-            try {
-                page.waitForLoadState(LoadState.NETWORKIDLE, Page.WaitForLoadStateOptions().setTimeout(10_000.0))
-            } catch (_: Exception) {
-                page.waitForTimeout(3_000.0)
-            }
-
-            // Cookie clear resets consent — banner reappears on fresh load, must dismiss again
-            dismissCookieBanner(page)
-
-            // Wait for the login button's betplaycaptcha class — confirms page JS has
-            // written a fresh CAPTCHA token before we submit.
-            try {
-                page.waitForSelector("button.betplaycaptcha",
-                    Page.WaitForSelectorOptions().setTimeout(8_000.0))
-            } catch (_: Exception) {
-                log.debug("[Browser] betplaycaptcha class not found — proceeding anyway")
+            // Intercept login API responses — helps diagnose why login is rejected
+            if (attempt == 1) {
+                page.onResponse { response ->
+                    val url = response.url()
+                    if (url.contains("auth", ignoreCase = true) ||
+                        url.contains("login", ignoreCase = true) ||
+                        url.contains("token", ignoreCase = true) ||
+                        url.contains("session", ignoreCase = true)) {
+                        log.info("[Browser][debug] Login API response: {} {}", response.status(), url)
+                    }
+                }
             }
 
             val loginInput = page.locator("input[placeholder*='Usuario'], input[placeholder*='Cédula'], input[placeholder*='usuario' i]")
@@ -307,7 +283,22 @@ class BrowserBetPlacerService(
             if (loginBtn.count() > 0) loginBtn.click()
             else page.locator("button.betplaycaptcha").first().click()
 
+            page.waitForTimeout(300.0)
+            page.keyboard().press("Enter")
+
             page.waitForTimeout(4_000.0)
+
+            // Detect Betplay's phone MFA modal ("Selecciona un celular"). This appears when
+            // Betplay doesn't recognise the device. It cannot be automated (requires SMS code).
+            // The user must log in manually to re-establish the trusted-device session.
+            val mfaVisible = runCatching {
+                page.locator(":has-text('Selecciona un celular'), :has-text('selecciona un celular')").count() > 0
+            }.getOrDefault(false)
+            if (mfaVisible) {
+                log.error("[Browser] Betplay phone MFA modal detected — manual login required. " +
+                    "Open Chrome, log in manually, complete the phone verification, and restart the service.")
+                return false
+            }
 
             if (isLoggedIn(page)) {
                 log.info("[Browser] Login successful")
@@ -317,6 +308,28 @@ class BrowserBetPlacerService(
                 page.waitForTimeout(2_000.0)
                 ensureLoggedIn(page, attempt + 1)
             } else {
+                // Capture page state for debugging before giving up
+                runCatching {
+                    val currentUrl = page.url()
+                    val notifText = page.evaluate("""
+                        () => {
+                            const selectors = [
+                                'mat-snack-bar-container', '[class*="snack" i]',
+                                '[class*="notification" i]', '[class*="toast" i]',
+                                '[class*="alert" i]', '[class*="error-msg" i]',
+                                '[class*="login-error" i]', '[class*="message" i]'
+                            ];
+                            for (const sel of selectors) {
+                                for (const el of document.querySelectorAll(sel)) {
+                                    const t = el.textContent?.trim();
+                                    if (t && t.length > 3 && t.length < 400) return sel + ': ' + t;
+                                }
+                            }
+                            return 'no notification found';
+                        }
+                    """.trimIndent()).toString()
+                    log.error("[Browser][debug] Login fail state — URL: {} | notification: {}", currentUrl, notifText)
+                }
                 log.error("[Browser] Login failed after {} attempts", attempt)
                 false
             }
@@ -393,6 +406,8 @@ class BrowserBetPlacerService(
     }
 
     private fun clickOutcome(page: Page, outcomeId: Long?, favoriteSide: String, matchDesc: String, betMarket: String = "RESULTADO_FINAL"): Boolean {
+        log.info("[Browser] clickOutcome start — market={} side={} outcomeId={}", betMarket, favoriteSide, outcomeId)
+        val tClick = System.currentTimeMillis()
         // Timeout for a single click attempt — short so we don't spam 60 retries when the
         // market is suspended (e.g. after a goal). Playwright retries every 500ms internally.
         val clickTimeout = Locator.ClickOptions().setTimeout(120_000.0)
@@ -471,6 +486,7 @@ class BrowserBetPlacerService(
 
         if (betMarket == "DOBLE_OPORTUNIDAD") {
             // Scroll to trigger lazy rendering of all sections
+            log.info("[Browser] Scrolling to bottom for lazy render — {}ms since clickOutcome", System.currentTimeMillis() - tClick)
             runCatching { page.evaluate("window.scrollTo(0, document.body.scrollHeight)") }
             page.waitForTimeout(600.0)
 
@@ -559,11 +575,13 @@ class BrowserBetPlacerService(
             }
         } else {
             // Scroll to bottom so lazy-rendered sections enter the DOM
+            log.info("[Browser] Scrolling to bottom for lazy render — {}ms since clickOutcome", System.currentTimeMillis() - tClick)
             runCatching { page.evaluate("window.scrollTo(0, document.body.scrollHeight)") }
             page.waitForTimeout(500.0)
             runCatching { page.evaluate("window.scrollTo(0, 0)") }
             page.waitForTimeout(300.0)
         }
+        log.info("[Browser] Scroll done, searching for section '{}' — {}ms since clickOutcome", sectionLabel, System.currentTimeMillis() - tClick)
 
         // Use JavaScript to find the section header by its visible text (innerText).
         // findFirst=true  → search forward (first match in DOM order = top of page).

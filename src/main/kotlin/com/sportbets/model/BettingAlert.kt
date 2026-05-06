@@ -55,6 +55,19 @@ data class BettingAlert(
     @Column(name = "trigger_scenario", length = 30)
     val triggerScenario: String? = null,
 
+    /** Which bet offer was used: RESULTADO_FINAL / DOBLE_OPORTUNIDAD / PRORROGA_INCLUIDA */
+    @Column(name = "market", length = 30)
+    val market: String? = null,
+
+    /**
+     * Odds the bet was actually placed at.
+     * For DOBLE_OPORTUNIDAD this is the DC odds (~1.22–1.46), NOT the outright odds stored
+     * in currentOdds (~2.50). For all other markets this equals currentOdds.
+     * Use this column for P&L calculations — currentOdds is the strategy trigger reference only.
+     */
+    @Column(name = "actual_bet_odds")
+    val actualBetOdds: Double? = null,
+
     @Column(name = "triggered_at", nullable = false)
     val triggeredAt: LocalDateTime = LocalDateTime.now()
 )
