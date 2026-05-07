@@ -2,10 +2,12 @@ package com.sportbets.service
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.sportbets.model.BettingAlert
+import com.sportbets.model.FootballLiveStats
 import com.sportbets.model.Match
 import com.sportbets.model.MatchStatus
 import com.sportbets.model.OddsSnapshot
 import com.sportbets.repository.BettingAlertRepository
+import com.sportbets.repository.FootballLiveStatsRepository
 import com.sportbets.repository.MatchRepository
 import com.sportbets.repository.OddsSnapshotRepository
 import org.slf4j.LoggerFactory
@@ -33,6 +35,7 @@ class OddsMonitorService(
     private val apiClient: BetplayApiClient,
     private val matchRepository: MatchRepository,
     private val oddsSnapshotRepository: OddsSnapshotRepository,
+    private val footballLiveStatsRepository: FootballLiveStatsRepository,
     private val bettingAlertRepository: BettingAlertRepository,
     private val betPlacerService: BetPlacerService,
     @Value("\${betplay.monitor.odds-rise-threshold-pct:15.0}") private val oddsRiseThresholdPct: Double,
@@ -166,10 +169,11 @@ class OddsMonitorService(
             firstLive
         }
 
-        checkAndFireAlert(match, baseline, snapshot)
+        val liveStats = footballLiveStatsRepository.findBySnapshotId(snapshot.id)
+        checkAndFireAlert(match, baseline, snapshot, liveStats)
     }
 
-    private fun checkAndFireAlert(match: Match, baseline: OddsSnapshot, current: OddsSnapshot) {
+    private fun checkAndFireAlert(match: Match, baseline: OddsSnapshot, current: OddsSnapshot, liveStats: FootballLiveStats?) {
         // Identify the original favorite (lowest odds pre-match)
         val favoriteSide = baseline.favoriteSide()
 
@@ -231,6 +235,7 @@ class OddsMonitorService(
             log.info("Skipping {} vs {} — score/minute not yet available", match.homeTeam, match.awayTeam)
             return
         }
+
         val deficit = opponentScore - favoriteScore
 
         // --- Path A: favorite losing by exactly 1 goal ---
@@ -312,6 +317,16 @@ class OddsMonitorService(
             betMarket == "DOBLE_OPORTUNIDAD" && favoriteSide == "HOME" -> current.homeDrawOdds ?: currentOdds
             betMarket == "DOBLE_OPORTUNIDAD" && favoriteSide == "AWAY" -> current.awayDrawOdds ?: currentOdds
             else -> currentOdds
+        }
+
+        if (liveStats != null) {
+            val favoriteCorners = if (favoriteSide == "HOME") liveStats.homeCorners else liveStats.awayCorners
+            val opponentCorners = if (favoriteSide == "HOME") liveStats.awayCorners else liveStats.homeCorners
+            val favoriteYellows = if (favoriteSide == "HOME") liveStats.homeYellowCards else liveStats.awayYellowCards
+            val opponentYellows = if (favoriteSide == "HOME") liveStats.awayYellowCards else liveStats.homeYellowCards
+            log.info("{} vs {} live stats at alert: corners fav={} opp={} yellows fav={} opp={}",
+                match.homeTeam, match.awayTeam,
+                favoriteCorners, opponentCorners, favoriteYellows, opponentYellows)
         }
 
         // Place bet first so the result is included in the alert message
@@ -425,7 +440,24 @@ class OddsMonitorService(
             matchMinute         = clock?.get("minute")?.asInt(),
             capturedAt          = LocalDateTime.now()
         )
-        return oddsSnapshotRepository.save(snapshot)
+        val saved = oddsSnapshotRepository.save(snapshot)
+
+        val footballStatsNode = liveData?.get("statistics")?.get("football")
+        if (footballStatsNode != null) {
+            val homeStats = footballStatsNode["home"]
+            val awayStats = footballStatsNode["away"]
+            footballLiveStatsRepository.save(FootballLiveStats(
+                snapshot       = saved,
+                homeCorners    = homeStats?.get("corners")?.asInt(),
+                awayCorners    = awayStats?.get("corners")?.asInt(),
+                homeYellowCards = homeStats?.get("yellowCards")?.asInt(),
+                awayYellowCards = awayStats?.get("yellowCards")?.asInt(),
+                homeRedCards   = homeStats?.get("redCards")?.asInt(),
+                awayRedCards   = awayStats?.get("redCards")?.asInt(),
+            ))
+        }
+
+        return saved
     }
 
     private data class ParsedOdds(

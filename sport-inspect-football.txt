@@ -1,0 +1,463 @@
+======================================================================
+SPORT OFFERS INSPECTOR — football
+======================================================================
+
+LIVE EVENTS: 23
+
+--- LIVE EVENT SAMPLE (first event) ---
+  id:          1026090183
+  name:        New Mexico United - El Paso Locomotive FC
+  group:       USL Championship
+  start:       2026-05-07T01:07:00Z
+  state:       STARTED
+  --- liveData ---
+  liveData raw:
+    {
+      "eventId" : 1026090183,
+      "matchClock" : {
+        "minute" : 94,
+        "second" : 16,
+        "period" : "2ª parte",
+        "running" : true,
+        "periodId" : "SECOND_HALF",
+        "version" : 1778122936736
+      },
+      "score" : {
+        "home" : "2",
+        "away" : "2",
+        "who" : "AWAY",
+        "version" : 1778122440212
+      },
+      "statistics" : {
+        "football" : {
+          "home" : {
+            "yellowCards" : 2,
+            "redCards" : 0,
+            "corners" : 4
+          },
+          "away" : {
+            "yellowCards" : 2,
+            "redCards" : 0,
+            "corners" : 6
+          }
+        },
+        "version" : 1778122682848
+      },
+      "liveStatistics" : [ {
+        "occurrenceTypeId" : "CARDS_RED_HOME",
+        "count" : 0
+      }, {
+        "occurrenceTypeId" : "CARDS_RED_AWAY",
+        "count" : 0
+      }, {
+        "occurrenceTypeId" : "CORNERS_AWAY",
+        "count" : 6
+      }, {
+        "occurrenceTypeId" : "CARDS_YELLOW_HOME",
+        "count" : 2
+      }, {
+        "occurrenceTypeId" : "CARDS_YELLOW_AWAY",
+        "count" : 2
+      }, {
+        "occurrenceTypeId" : "CORNERS_HOME",
+        "count" : 4
+      } ]
+    }
+  --- betOffers in listView response (2 offers) ---
+    [Resultado Final]  OT_ONE odds=11500  |  OT_CROSS odds=1090  |  OT_TWO odds=10000
+    [Total de goles]  OT_OVER odds=5400  |  OT_UNDER odds=1070
+
+[LIVE EVENT 1026090183 [client_id=2]] — 8 bet offers
+  [catId=6] Total de goles
+      id=4167143716 OT_OVER(Más de) odds=5400 line=4500
+      id=4167143717 OT_UNDER(Menos de) odds=1070 line=4500
+  [catId=2] Resultado Final
+      id=4167134842 OT_ONE(1) odds=11500
+      id=4167134843 OT_CROSS(X) odds=1090
+      id=4167134844 OT_TWO(2) odds=10000
+  [catId=12] Doble Oportunidad
+      id=4167134845 OT_ONE_OR_CROSS(1X) odds=0
+      id=4167134846 OT_ONE_OR_TWO(12) odds=4900
+      id=4167134847 OT_CROSS_OR_TWO(X2) odds=0
+  [catId=3] Resultado Correcto
+      id=4167120110 OT_UNTYPED(3-2) odds=7500
+      id=4167120116 OT_UNTYPED(3-3) odds=0
+      id=4167120122 OT_UNTYPED(2-2) odds=1030
+      id=4167120125 OT_UNTYPED(2-3) odds=7000
+      id=4173814263 OT_UNTYPED(6-2) odds=0
+      id=4173814264 OT_UNTYPED(5-4) odds=0
+      id=4173814266 OT_UNTYPED(6-3) odds=0
+      id=4173816653 OT_UNTYPED(2-4) odds=0
+      id=4173816656 OT_UNTYPED(3-4) odds=0
+      id=4173816787 OT_UNTYPED(5-3) odds=0
+      id=4173816788 OT_UNTYPED(4-4) odds=0
+      id=4173816790 OT_UNTYPED(5-2) odds=0
+      id=4173816792 OT_UNTYPED(4-3) odds=0
+      id=4173816793 OT_UNTYPED(4-2) odds=0
+      id=4173853243 OT_UNTYPED(2-5) odds=0
+      id=4173853244 OT_UNTYPED(3-5) odds=0
+  [catId=11] Hándicap 3-Way
+      id=4167120126 OT_ONE(1) odds=0 line=1000
+      id=4167120127 OT_CROSS(X) odds=7000 line=1000
+      id=4167120128 OT_TWO(2) odds=0 line=1000
+  [catId=11] Hándicap 3-Way
+      id=4167120129 OT_ONE(1) odds=0 line=-1000
+      id=4167120130 OT_CROSS(X) odds=7500 line=-1000
+      id=4167120131 OT_TWO(2) odds=0 line=-1000
+  [catId=2] 2.ª parte
+      id=4167120132 OT_ONE(1) odds=101000
+      id=4167120133 OT_CROSS(X) odds=11500
+      id=4167120134 OT_TWO(2) odds=1020
+  [catId=2 SUSPENDED] Próximo gol (5) (Opción empate: no se marcarán más goles)
+      id=4173853245 OT_ONE(1) odds=0
+      id=4173853246 OT_CROSS(X) odds=0
+      id=4173853247 OT_TWO(2) odds=0
+
+[LIVE EVENT 1026090183 [client_id=200]] — 8 bet offers
+  [catId=6] Total de goles
+      id=4167143716 OT_OVER(Más de) odds=5400 line=4500
+      id=4167143717 OT_UNDER(Menos de) odds=1070 line=4500
+  [catId=2] Resultado Final
+      id=4167134842 OT_ONE(1) odds=11500
+      id=4167134843 OT_CROSS(X) odds=1090
+      id=4167134844 OT_TWO(2) odds=10000
+  [catId=12] Doble Oportunidad
+      id=4167134845 OT_ONE_OR_CROSS(1X) odds=0
+      id=4167134846 OT_ONE_OR_TWO(12) odds=4900
+      id=4167134847 OT_CROSS_OR_TWO(X2) odds=0
+  [catId=3] Resultado Correcto
+      id=4167120110 OT_UNTYPED(3-2) odds=7500
+      id=4167120116 OT_UNTYPED(3-3) odds=0
+      id=4167120122 OT_UNTYPED(2-2) odds=1030
+      id=4167120125 OT_UNTYPED(2-3) odds=7000
+      id=4173814263 OT_UNTYPED(6-2) odds=0
+      id=4173814264 OT_UNTYPED(5-4) odds=0
+      id=4173814266 OT_UNTYPED(6-3) odds=0
+      id=4173816653 OT_UNTYPED(2-4) odds=0
+      id=4173816656 OT_UNTYPED(3-4) odds=0
+      id=4173816787 OT_UNTYPED(5-3) odds=0
+      id=4173816788 OT_UNTYPED(4-4) odds=0
+      id=4173816790 OT_UNTYPED(5-2) odds=0
+      id=4173816792 OT_UNTYPED(4-3) odds=0
+      id=4173816793 OT_UNTYPED(4-2) odds=0
+      id=4173853243 OT_UNTYPED(2-5) odds=0
+      id=4173853244 OT_UNTYPED(3-5) odds=0
+  [catId=11] Hándicap 3-Way
+      id=4167120126 OT_ONE(1) odds=0 line=1000
+      id=4167120127 OT_CROSS(X) odds=7000 line=1000
+      id=4167120128 OT_TWO(2) odds=0 line=1000
+  [catId=11] Hándicap 3-Way
+      id=4167120129 OT_ONE(1) odds=0 line=-1000
+      id=4167120130 OT_CROSS(X) odds=7500 line=-1000
+      id=4167120131 OT_TWO(2) odds=0 line=-1000
+  [catId=2] 2.ª parte
+      id=4167120132 OT_ONE(1) odds=101000
+      id=4167120133 OT_CROSS(X) odds=11500
+      id=4167120134 OT_TWO(2) odds=1020
+  [catId=2 SUSPENDED] Próximo gol (5) (Opción empate: no se marcarán más goles)
+      id=4173853245 OT_ONE(1) odds=0
+      id=4173853246 OT_CROSS(X) odds=0
+      id=4173853247 OT_TWO(2) odds=0
+
+UPCOMING EVENTS: 136
+
+--- UPCOMING EVENT SAMPLE (first event) ---
+  id:          1026090183
+  name:        New Mexico United - El Paso Locomotive FC
+  group:       USL Championship
+  start:       2026-05-07T01:07:00Z
+  state:       STARTED
+  --- betOffers in listView response (2 offers) ---
+    [Resultado Final]  OT_ONE odds=11500  |  OT_CROSS odds=1090  |  OT_TWO odds=10000
+    [Total de goles]  OT_OVER odds=5400  |  OT_UNDER odds=1070
+
+[UPCOMING EVENT 1026090183] — 8 bet offers
+  [catId=6] Total de goles
+      id=4167143716 OT_OVER(Más de) odds=5400 line=4500
+      id=4167143717 OT_UNDER(Menos de) odds=1070 line=4500
+  [catId=2] Resultado Final
+      id=4167134842 OT_ONE(1) odds=11500
+      id=4167134843 OT_CROSS(X) odds=1090
+      id=4167134844 OT_TWO(2) odds=10000
+  [catId=12] Doble Oportunidad
+      id=4167134845 OT_ONE_OR_CROSS(1X) odds=0
+      id=4167134846 OT_ONE_OR_TWO(12) odds=4900
+      id=4167134847 OT_CROSS_OR_TWO(X2) odds=0
+  [catId=3] Resultado Correcto
+      id=4167120110 OT_UNTYPED(3-2) odds=7500
+      id=4167120116 OT_UNTYPED(3-3) odds=0
+      id=4167120122 OT_UNTYPED(2-2) odds=1030
+      id=4167120125 OT_UNTYPED(2-3) odds=7000
+      id=4173814263 OT_UNTYPED(6-2) odds=0
+      id=4173814264 OT_UNTYPED(5-4) odds=0
+      id=4173814266 OT_UNTYPED(6-3) odds=0
+      id=4173816653 OT_UNTYPED(2-4) odds=0
+      id=4173816656 OT_UNTYPED(3-4) odds=0
+      id=4173816787 OT_UNTYPED(5-3) odds=0
+      id=4173816788 OT_UNTYPED(4-4) odds=0
+      id=4173816790 OT_UNTYPED(5-2) odds=0
+      id=4173816792 OT_UNTYPED(4-3) odds=0
+      id=4173816793 OT_UNTYPED(4-2) odds=0
+      id=4173853243 OT_UNTYPED(2-5) odds=0
+      id=4173853244 OT_UNTYPED(3-5) odds=0
+  [catId=11] Hándicap 3-Way
+      id=4167120126 OT_ONE(1) odds=0 line=1000
+      id=4167120127 OT_CROSS(X) odds=7000 line=1000
+      id=4167120128 OT_TWO(2) odds=0 line=1000
+  [catId=11] Hándicap 3-Way
+      id=4167120129 OT_ONE(1) odds=0 line=-1000
+      id=4167120130 OT_CROSS(X) odds=7500 line=-1000
+      id=4167120131 OT_TWO(2) odds=0 line=-1000
+  [catId=2] 2.ª parte
+      id=4167120132 OT_ONE(1) odds=101000
+      id=4167120133 OT_CROSS(X) odds=11500
+      id=4167120134 OT_TWO(2) odds=1020
+  [catId=2 SUSPENDED] Próximo gol (5) (Opción empate: no se marcarán más goles)
+      id=4173853245 OT_ONE(1) odds=0
+      id=4173853246 OT_CROSS(X) odds=0
+      id=4173853247 OT_TWO(2) odds=0
+
+[UPCOMING EVENT 1027554889 (2nd sample)] — 23 bet offers
+  [catId=12] Doble Oportunidad
+      id=4171456440 OT_ONE_OR_CROSS(1X) odds=3350
+      id=4171456441 OT_ONE_OR_TWO(12) odds=1150
+      id=4171456442 OT_CROSS_OR_TWO(X2) odds=0
+  [catId=11] Hándicap 3-Way
+      id=4171456491 OT_ONE(1) odds=1520 line=2000
+      id=4171456492 OT_CROSS(X) odds=3250 line=2000
+      id=4171456493 OT_TWO(2) odds=5600 line=2000
+  [catId=6] Total de goles
+      id=4171456512 OT_OVER(Más de) odds=4600 line=3500
+      id=4171456513 OT_UNDER(Menos de) odds=1130 line=3500
+  [catId=6] Total de goles
+      id=4171456526 OT_OVER(Más de) odds=1200 line=1500
+      id=4171456527 OT_UNDER(Menos de) odds=3700 line=1500
+  [catId=18] Ambos Equipos Marcarán
+      id=4171466940 OT_YES(Sí) odds=2000
+      id=4171466943 OT_NO(No) odds=1670
+  [catId=2] 2.ª parte
+      id=4171466952 OT_ONE(1) odds=3550
+      id=4171466953 OT_CROSS(X) odds=2480
+      id=4171466954 OT_TWO(2) odds=2280
+  [catId=11] Hándicap 3-Way
+      id=4171466969 OT_ONE(1) odds=3450 line=1000
+      id=4171466970 OT_CROSS(X) odds=2430 line=1000
+      id=4171466971 OT_TWO(2) odds=2230 line=1000
+  [catId=3] Resultado Correcto
+      id=4171466987 OT_UNTYPED(2-2) odds=9500
+      id=4171466989 OT_UNTYPED(3-1) odds=23000
+      id=4171466990 OT_UNTYPED(1-3) odds=8000
+      id=4171466991 OT_UNTYPED(0-1) odds=3250
+      id=4171466992 OT_UNTYPED(2-4) odds=29000
+      id=4171466993 OT_UNTYPED(3-2) odds=23000
+      id=4171466994 OT_UNTYPED(4-1) odds=0
+      id=4171466996 OT_UNTYPED(2-1) odds=9000
+      id=4171466997 OT_UNTYPED(0-4) odds=12500
+      id=4171466998 OT_UNTYPED(4-2) odds=0
+      id=4171466999 OT_UNTYPED(4-3) odds=0
+      id=4171467000 OT_UNTYPED(1-1) odds=4400
+      id=4171467001 OT_UNTYPED(3-4) odds=0
+      id=4171467002 OT_UNTYPED(1-4) odds=17000
+      id=4171467003 OT_UNTYPED(3-3) odds=31000
+      id=4171467004 OT_UNTYPED(0-2) odds=3450
+      id=4171467006 OT_UNTYPED(2-3) odds=17000
+      id=4171467008 OT_UNTYPED(0-3) odds=6100
+      id=4171467009 OT_UNTYPED(1-2) odds=5000
+      id=4173813350 OT_UNTYPED(2-5) odds=0
+      id=4173813351 OT_UNTYPED(1-5) odds=30000
+      id=4173813352 OT_UNTYPED(0-5) odds=25000
+      id=4173828565 OT_UNTYPED(4-4) odds=0
+      id=4173851469 OT_UNTYPED(0-6) odds=0
+  [catId=6] Total de goles
+      id=4171467014 OT_OVER(Más de) odds=2140 line=2500
+      id=4171467015 OT_UNDER(Menos de) odds=1600 line=2500
+  [catId=6] Total de goles de CD Luis Angel Firpo
+      id=4171453870 OT_OVER(Más de) odds=1580 line=1500
+      id=4171453871 OT_UNDER(Menos de) odds=2150 line=1500
+  [catId=2] Resultado Final
+      id=4171453876 OT_ONE(1) odds=12500
+      id=4171453877 OT_CROSS(X) odds=4500
+      id=4171453878 OT_TWO(2) odds=1250
+  [catId=6] Total de goles
+      id=4171453923 OT_OVER(Más de) odds=11500 line=4500
+      id=4171453924 OT_UNDER(Menos de) odds=0 line=4500
+  [catId=1] Hándicap 
+      id=4173813353 OT_ONE(AD Isidro Metapán) odds=11000 line=-500
+      id=4173813354 OT_TWO(CD Luis Angel Firpo) odds=1010 line=500
+  [catId=1] Hándicap 
+      id=4173813356 OT_ONE(AD Isidro Metapán) odds=3500 line=500
+      id=4173813357 OT_TWO(CD Luis Angel Firpo) odds=1230 line=-500
+  [catId=1] Hándicap 
+      id=4173857487 OT_ONE(AD Isidro Metapán) odds=1090 line=2500
+      id=4173857488 OT_TWO(CD Luis Angel Firpo) odds=5500 line=-2500
+  [catId=1] Hándicap 
+      id=4173816480 OT_ONE(AD Isidro Metapán) odds=1530 line=1500
+      id=4173816481 OT_TWO(CD Luis Angel Firpo) odds=2250 line=-1500
+  [catId=11] Hándicap 3-Way
+      id=4173851466 OT_ONE(1) odds=1080 line=3000
+      id=4173851467 OT_CROSS(X) odds=7000 line=3000
+      id=4173851468 OT_TWO(2) odds=15000 line=3000
+  [catId=6] Total de goles - 45:00-59:59
+      id=4173852429 OT_OVER(Más de) odds=2450 line=500
+      id=4173852430 OT_UNDER(Menos de) odds=1450 line=500
+  [catId=2] Ganador del intervalo - 45:00-59:59
+      id=4173852431 OT_ONE(1) odds=6000
+      id=4173852432 OT_CROSS(X) odds=1410
+      id=4173852433 OT_TWO(2) odds=4100
+  [catId=6] Total de goles de AD Isidro Metapán
+      id=4173828053 OT_OVER(Más de) odds=2000 line=500
+      id=4173828054 OT_UNDER(Menos de) odds=1670 line=500
+  [catId=2] Próximo gol (2) (Opción empate: no se marcarán más goles)
+      id=4173829699 OT_ONE(1) odds=2750
+      id=4173829700 OT_CROSS(X) odds=3850
+      id=4173829701 OT_TWO(2) odds=2000
+  [catId=2] Ganador del intervalo - 50:00-54:59
+      id=4173866921 OT_ONE(1) odds=11000
+      id=4173866922 OT_CROSS(X) odds=1110
+      id=4173866923 OT_TWO(2) odds=8500
+  [catId=6] Total de goles - 50:00-54:59
+      id=4173866924 OT_OVER(Más de) odds=5000 line=500
+      id=4173866925 OT_UNDER(Menos de) odds=1100 line=500
+
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+AGGREGATE: all criterion labels + outcome types seen across 10 upcoming events
+======================================================================
+  2.ª parte                                     → OT_CROSS, OT_ONE, OT_TWO
+  Ambos Equipos Marcarán                        → OT_NO, OT_YES
+  Anotará                                       → OT_YES
+  Apuesta sin empate                            → OT_ONE, OT_TWO
+  Doble Oportunidad                             → OT_CROSS_OR_TWO, OT_ONE_OR_CROSS, OT_ONE_OR_TWO
+  Equipo que se clasificará                     → OT_ONE, OT_TWO
+  Ganador del intervalo - 45:00-59:59           → OT_CROSS, OT_ONE, OT_TWO
+  Ganador del intervalo - 50:00-54:59           → OT_CROSS, OT_ONE, OT_TWO
+  Ganador del intervalo - 60:00-74:59           → OT_CROSS, OT_ONE, OT_TWO
+  Ganador del intervalo - 70:00-74:59           → OT_CROSS, OT_ONE, OT_TWO
+  Hándicap                                      → OT_ONE, OT_TWO
+  Hándicap 3-Way                                → OT_CROSS, OT_ONE, OT_TWO
+  Marca al menos 2 goles                        → OT_YES
+  Marca al menos 3 goles                        → OT_YES
+  Marcará                                       → OT_YES
+  Más Tiros de Esquina                          → OT_CROSS, OT_ONE, OT_TWO
+  Primer gol (Empate: sin goles)                → OT_CROSS, OT_ONE, OT_TWO
+  Primer goleador                               → OT_NO_GOAL, OT_PLAYER_PARTICIPANT
+  Próximo gol (2) (Opción empate: no se marcarán más goles) → OT_CROSS, OT_ONE, OT_TWO
+  Próximo gol (3) (Opción empate: no se marcarán más goles) → OT_CROSS, OT_ONE, OT_TWO
+  Próximo gol (5) (Opción empate: no se marcarán más goles) → OT_CROSS, OT_ONE, OT_TWO
+  Resultado Correcto                            → OT_UNTYPED
+  Resultado Final                               → OT_CROSS, OT_ONE, OT_TWO
+  Siguiente Tiro de Esquina. Sin Tiro de Esquina no hay apuesta (11) → OT_ONE, OT_TWO
+  Siguiente Tiro de Esquina. Sin Tiro de Esquina no hay apuesta (4) → OT_ONE, OT_TWO
+  Siguiente Tiro de Esquina. Sin Tiro de Esquina no hay apuesta (5) → OT_ONE, OT_TWO
+  Siguiente Tiro de Esquina. Sin Tiro de Esquina no hay apuesta (8) → OT_ONE, OT_TWO
+  Siguiente goleador (2) - Tiempo reglamentario (En caso de goles en propia meta, el siguiente goleador será considerado ganador) → OT_NO_GOAL, OT_PLAYER_PARTICIPANT
+  Siguiente goleador (3) - Tiempo reglamentario (En caso de goles en propia meta, el siguiente goleador será considerado ganador) → OT_NO_GOAL, OT_PLAYER_PARTICIPANT
+  Total asiático                                → OT_OVER, OT_UNDER
+  Total de Tiros de Esquina                     → OT_OVER, OT_UNDER
+  Total de Tiros de Esquina a favor de Alianza Atlético → OT_OVER, OT_UNDER
+  Total de Tiros de Esquina a favor de América de Cali → OT_OVER, OT_UNDER
+  Total de Tiros de Esquina a favor de Cruzeiro-MG → OT_OVER, OT_UNDER
+  Total de Tiros de Esquina a favor de Deportes Tolima → OT_OVER, OT_UNDER
+  Total de Tiros de Esquina a favor de Nacional de Montevideo → OT_OVER, OT_UNDER
+  Total de Tiros de Esquina a favor de Universidad Católica (CHI) → OT_OVER, OT_UNDER
+  Total de goles                                → OT_OVER, OT_UNDER
+  Total de goles - 45:00-59:59                  → OT_OVER, OT_UNDER
+  Total de goles - 50:00-54:59                  → OT_OVER, OT_UNDER
+  Total de goles - 60:00-74:59                  → OT_OVER, OT_UNDER
+  Total de goles - 70:00-74:59                  → OT_OVER, OT_UNDER
+  Total de goles Alianza Atlético - 45:00-59:59 → OT_OVER, OT_UNDER
+  Total de goles Alianza Atlético - 50:00-54:59 → OT_OVER, OT_UNDER
+  Total de goles Deportes Tolima - 45:00-59:59  → OT_OVER, OT_UNDER
+  Total de goles Deportivo Toluca FC - 60:00-74:59 → OT_OVER, OT_UNDER
+  Total de goles Deportivo Toluca FC - 70:00-74:59 → OT_OVER, OT_UNDER
+  Total de goles Universidad Católica (CHI) - 45:00-59:59 → OT_OVER, OT_UNDER
+  Total de goles Universidad Católica (CHI) - 50:00-54:59 → OT_OVER, OT_UNDER
+  Total de goles de AD Isidro Metapán           → OT_OVER, OT_UNDER
+  Total de goles de Alianza Atlético            → OT_OVER, OT_UNDER
+  Total de goles de América de Cali             → OT_OVER, OT_UNDER
+  Total de goles de América de Cali - 45:00-59:59 → OT_OVER, OT_UNDER
+  Total de goles de América de Cali - 50:00-54:59 → OT_OVER, OT_UNDER
+  Total de goles de CD Cacahuatique             → OT_OVER, OT_UNDER
+  Total de goles de CD FAS                      → OT_OVER, OT_UNDER
+  Total de goles de CD Luis Angel Firpo         → OT_OVER, OT_UNDER
+  Total de goles de Cruzeiro-MG                 → OT_OVER, OT_UNDER
+  Total de goles de Cruzeiro-MG - 45:00-59:59   → OT_OVER, OT_UNDER
+  Total de goles de Cruzeiro-MG - 50:00-54:59   → OT_OVER, OT_UNDER
+  Total de goles de Deportes Tolima             → OT_OVER, OT_UNDER
+  Total de goles de Deportivo Toluca FC         → OT_OVER, OT_UNDER
+  Total de goles de Houston Dash (F)            → OT_OVER, OT_UNDER
+  Total de goles de Los Angeles FC              → OT_OVER, OT_UNDER
+  Total de goles de Los Angeles FC - 60:00-74:59 → OT_OVER, OT_UNDER
+  Total de goles de Los Angeles FC - 70:00-74:59 → OT_OVER, OT_UNDER
+  Total de goles de Nacional de Montevideo      → OT_OVER, OT_UNDER
+  Total de goles de Nacional de Montevideo - 45:00-59:59 → OT_OVER, OT_UNDER
+  Total de goles de Universidad Católica (CHI)  → OT_OVER, OT_UNDER
+  Total de goles de Utah Royals (F)             → OT_OVER, OT_UNDER

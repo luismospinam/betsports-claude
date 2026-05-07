@@ -10,7 +10,7 @@ import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 
 @Component
-@Profile("!auth & !discover & !discover-sports & !inspect-sport & !test-browser-bet & !test-browser-bet-basketball & !test-doble-oportunidad")
+@Profile("!auth & !discover & !discover-sports & !discover-sofascore & !inspect-sport & !test-browser-bet & !test-browser-bet-basketball & !test-doble-oportunidad")
 class Schedulers(
     private val matchSyncService: MatchSyncService,
     private val oddsMonitorService: OddsMonitorService,

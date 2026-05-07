@@ -6,7 +6,10 @@ PROFILE_DIR="$HOME/Library/Application Support/Google/ChromeDebug"
 echo "Stopping Chrome and restarting with remote debugging on port 9222..."
 killall "Google Chrome" 2>/dev/null
 sleep 2
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+# caffeinate -i keeps macOS from suspending Chrome during sleep — without it, the CDP
+# remote debugging server on port 9222 goes offline when the machine sleeps, causing
+# the betting service to fail with a misleading "cannot connect" error on wake.
+caffeinate -i "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
   --remote-debugging-port=9222 \
   --user-data-dir="$PROFILE_DIR" \
   --no-first-run \

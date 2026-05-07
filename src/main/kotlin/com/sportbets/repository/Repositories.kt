@@ -1,6 +1,7 @@
 package com.sportbets.repository
 
 import com.sportbets.model.BettingAlert
+import com.sportbets.model.FootballLiveStats
 import com.sportbets.model.Match
 import com.sportbets.model.MatchStatus
 import com.sportbets.model.OddsSnapshot
@@ -44,6 +45,11 @@ interface OddsSnapshotRepository : JpaRepository<OddsSnapshot, Long> {
 
     /** Count live snapshots taken since match started */
     fun countByMatchIdAndIsPreMatchFalse(matchId: Long): Long
+}
+
+@Repository
+interface FootballLiveStatsRepository : JpaRepository<FootballLiveStats, Long> {
+    fun findBySnapshotId(snapshotId: Long): FootballLiveStats?
 }
 
 @Repository

@@ -31,6 +31,30 @@ class BrowserBetPlacerService(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    fun testLogin(): Boolean {
+        log.info("[Browser] === LOGIN TEST — no bet will be placed ===")
+        BrowserLock.acquire("TestLogin")
+        return try {
+            Playwright.create().use { playwright ->
+                val context = connectViaCdp(playwright) ?: return false
+                val page = context.newPage()
+                try {
+                    val loggedIn = ensureLoggedIn(page)
+                    if (loggedIn) log.info("[Browser] LOGIN TEST PASSED — session active")
+                    else          log.error("[Browser] LOGIN TEST FAILED — could not authenticate")
+                    loggedIn
+                } finally {
+                    page.close()
+                }
+            }
+        } catch (e: Exception) {
+            log.error("[Browser] LOGIN TEST error: {}", e.message)
+            false
+        } finally {
+            BrowserLock.release("TestLogin")
+        }
+    }
+
     fun placeBet(externalId: String, outcomeId: Long?, favoriteSide: String, matchDesc: String, triggerOdds: Double, betMarket: String = "RESULTADO_FINAL"): BetResult {
         log.info("[Browser] Starting browser bet: {} {} outcomeId={} market={}", matchDesc, favoriteSide, outcomeId, betMarket)
         val tag = "${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))}-$externalId"
@@ -55,21 +79,30 @@ class BrowserBetPlacerService(
     }
 
     private fun connectViaCdp(playwright: Playwright): BrowserContext? {
-        return try {
-            val browser = playwright.chromium().connectOverCDP("http://localhost:$cdpPort")
-            browser.contexts().firstOrNull()?.also {
-                log.info("[Browser] Connected to Chrome on port {}", cdpPort)
-            } ?: run {
-                log.error("[Browser] Connected to Chrome but found no open window")
-                null
+        // Retry up to 3 times with 3s backoff — handles macOS waking from sleep where Chrome's
+        // CDP server on port 9222 is temporarily unavailable even though Chrome is running.
+        repeat(3) { attempt ->
+            try {
+                val browser = playwright.chromium().connectOverCDP("http://localhost:$cdpPort")
+                return browser.contexts().firstOrNull()?.also {
+                    log.info("[Browser] Connected to Chrome on port {}", cdpPort)
+                } ?: run {
+                    log.error("[Browser] Connected to Chrome but found no open window")
+                    null
+                }
+            } catch (e: Exception) {
+                if (attempt < 2) {
+                    log.warn("[Browser] CDP connect attempt {} failed ({}): {} — retrying in 3s",
+                        attempt + 1, e.javaClass.simpleName, e.message?.take(120))
+                    Thread.sleep(3_000)
+                } else {
+                    log.error("[Browser] Cannot connect to Chrome on port {} after 3 attempts. " +
+                        "If Chrome is running, macOS may have suspended it — run start-chrome.sh. " +
+                        "Last error ({}): {}", cdpPort, e.javaClass.simpleName, e.message?.take(200))
+                }
             }
-        } catch (_: Exception) {
-            log.error(
-                "[Browser] Cannot connect to Chrome on port {}. Run start-chrome.bat first.",
-                cdpPort
-            )
-            null
         }
+        return null
     }
 
     private fun executeBet(

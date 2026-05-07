@@ -26,6 +26,9 @@ caffeinate -i ./gradlew bootRun          # macOS — caffeinate prevents JVM tim
 ./gradlew bootRun --args="--spring.profiles.active=inspect-sport --sport=basketball"
 # Output: console + sport-inspect-{sport}.txt — use this before implementing a new sport strategy
 
+# Test Chrome CDP connection and Betplay login only (no bet placed)
+./gradlew bootRun --args="--spring.profiles.active=test-login"
+
 # Test browser automation on a live match without triggering odds logic
 ./gradlew bootRun --args="--spring.profiles.active=test-browser-bet"
 ./gradlew bootRun --args="--spring.profiles.active=test-browser-bet --external-id=1027380893 --side=HOME"
@@ -110,6 +113,7 @@ Key DB invariant: each match should have at most one `isPreMatch=true` snapshot.
 | `discover` | Playwright opens Chrome to intercept and print real Betplay API endpoints |
 | `discover-sports` | HTTP sweep of Kambi sport slugs — prints which sports are active on BetPlay with event counts and ready-to-use API paths |
 | `inspect-sport` | Dumps liveData structure, all bet offer criterion labels, and outcome types for a given sport (`--sport=basketball`) |
+| `test-login` | Verifies Chrome CDP connection and Betplay login — no bet placed |
 | `test-browser-bet` | Tests Playwright bet automation on a live soccer match (bypasses odds logic) |
 | `test-browser-bet-basketball` | Tests Playwright bet automation on a live basketball match (Prórroga incluida market) |
 | `test-doble-oportunidad` | Tests DC bet placement specifically |
