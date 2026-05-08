@@ -38,6 +38,7 @@ class OddsMonitorService(
     private val footballLiveStatsRepository: FootballLiveStatsRepository,
     private val bettingAlertRepository: BettingAlertRepository,
     private val betPlacerService: BetPlacerService,
+    private val sofaScoreClient: SofaScoreClient,
     @Value("\${betplay.monitor.odds-rise-threshold-pct:15.0}") private val oddsRiseThresholdPct: Double,
     @Value("\${betplay.monitor.odds-rise-max-pct:60.0}") private val oddsRiseMaxPct: Double,
     @Value("\${betplay.monitor.max-alerts-per-match:1}") private val maxAlertsPerMatch: Int,
@@ -66,6 +67,8 @@ class OddsMonitorService(
         val oddsLastFetchedMs: Long,
     )
     private val dcCache = ConcurrentHashMap<Long, DCCache>()
+    // matchId → SofaScore event ID (resolved once per live match, cached for the match lifetime)
+    private val sofaScoreIdCache = ConcurrentHashMap<Long, String>()
 
     @Value("\${betplay.monitor.dc-odds-refresh-ms:180000}")
     private val dcOddsRefreshMs: Long = 180_000L
@@ -137,6 +140,9 @@ class OddsMonitorService(
 
     private fun processLiveMatch(match: Match, liveWrapper: com.fasterxml.jackson.databind.JsonNode?) {
         val snapshot = captureOddsSnapshot(match, isPreMatch = false, liveWrapper = liveWrapper) ?: return
+
+        // Always capture live stats regardless of betting state — needed for historical analysis
+        saveLiveStats(match, snapshot, liveWrapper)
 
         // Skip if a real bet was already placed for this match (FAILED/SKIPPED don't count)
         val placedAlerts = bettingAlertRepository.countByMatchIdAndBetStatusIn(match.id, listOf("PLACED", "DRY_RUN"))
@@ -320,13 +326,22 @@ class OddsMonitorService(
         }
 
         if (liveStats != null) {
-            val favoriteCorners = if (favoriteSide == "HOME") liveStats.homeCorners else liveStats.awayCorners
-            val opponentCorners = if (favoriteSide == "HOME") liveStats.awayCorners else liveStats.homeCorners
-            val favoriteYellows = if (favoriteSide == "HOME") liveStats.homeYellowCards else liveStats.awayYellowCards
-            val opponentYellows = if (favoriteSide == "HOME") liveStats.awayYellowCards else liveStats.homeYellowCards
-            log.info("{} vs {} live stats at alert: corners fav={} opp={} yellows fav={} opp={}",
+            val fav = if (favoriteSide == "HOME") "home" else "away"
+            val opp = if (favoriteSide == "HOME") "away" else "home"
+            log.info(
+                "{} vs {} stats at alert: corners {}:{} shots-on {}:{} shots-off {}:{} possession {}:{} yellows {}:{}",
                 match.homeTeam, match.awayTeam,
-                favoriteCorners, opponentCorners, favoriteYellows, opponentYellows)
+                if (fav == "home") liveStats.homeCorners else liveStats.awayCorners,
+                if (opp == "home") liveStats.homeCorners else liveStats.awayCorners,
+                if (fav == "home") liveStats.homeShotsOnTarget else liveStats.awayShotsOnTarget,
+                if (opp == "home") liveStats.homeShotsOnTarget else liveStats.awayShotsOnTarget,
+                if (fav == "home") liveStats.homeShotsOffTarget else liveStats.awayShotsOffTarget,
+                if (opp == "home") liveStats.homeShotsOffTarget else liveStats.awayShotsOffTarget,
+                if (fav == "home") liveStats.homePossession else liveStats.awayPossession,
+                if (opp == "home") liveStats.homePossession else liveStats.awayPossession,
+                if (fav == "home") liveStats.homeYellowCards else liveStats.awayYellowCards,
+                if (opp == "home") liveStats.homeYellowCards else liveStats.awayYellowCards,
+            )
         }
 
         // Place bet first so the result is included in the alert message
@@ -440,24 +455,40 @@ class OddsMonitorService(
             matchMinute         = clock?.get("minute")?.asInt(),
             capturedAt          = LocalDateTime.now()
         )
-        val saved = oddsSnapshotRepository.save(snapshot)
+        return oddsSnapshotRepository.save(snapshot)
+    }
 
-        val footballStatsNode = liveData?.get("statistics")?.get("football")
-        if (footballStatsNode != null) {
-            val homeStats = footballStatsNode["home"]
-            val awayStats = footballStatsNode["away"]
-            footballLiveStatsRepository.save(FootballLiveStats(
-                snapshot       = saved,
-                homeCorners    = homeStats?.get("corners")?.asInt(),
-                awayCorners    = awayStats?.get("corners")?.asInt(),
-                homeYellowCards = homeStats?.get("yellowCards")?.asInt(),
-                awayYellowCards = awayStats?.get("yellowCards")?.asInt(),
-                homeRedCards   = homeStats?.get("redCards")?.asInt(),
-                awayRedCards   = awayStats?.get("redCards")?.asInt(),
-            ))
-        }
+    private fun saveLiveStats(match: Match, snapshot: OddsSnapshot, liveWrapper: JsonNode?) {
+        val liveData = liveWrapper?.get("liveData") ?: return
+        val footballStatsNode = liveData["statistics"]?.get("football")
 
-        return saved
+        val homeKambi = footballStatsNode?.get("home")
+        val awayKambi = footballStatsNode?.get("away")
+
+        // Resolve SofaScore ID once per match (cached for match lifetime)
+        val sofaScoreId = sofaScoreIdCache.getOrPut(match.id) {
+            sofaScoreClient.findEventId(match.homeTeam, match.awayTeam) ?: ""
+        }.takeIf { it.isNotBlank() }
+
+        val sofaStats = sofaScoreId?.let { sofaScoreClient.fetchStats(it, match.homeTeam, match.awayTeam) }
+
+        if (homeKambi == null && sofaStats == null) return
+
+        footballLiveStatsRepository.save(FootballLiveStats(
+            snapshot            = snapshot,
+            homeCorners         = homeKambi?.get("corners")?.asInt(),
+            awayCorners         = awayKambi?.get("corners")?.asInt(),
+            homeYellowCards     = homeKambi?.get("yellowCards")?.asInt(),
+            awayYellowCards     = awayKambi?.get("yellowCards")?.asInt(),
+            homeRedCards        = homeKambi?.get("redCards")?.asInt(),
+            awayRedCards        = awayKambi?.get("redCards")?.asInt(),
+            homePossession      = sofaStats?.homePossession,
+            awayPossession      = sofaStats?.awayPossession,
+            homeShotsOnTarget   = sofaStats?.homeShotsOnTarget,
+            awayShotsOnTarget   = sofaStats?.awayShotsOnTarget,
+            homeShotsOffTarget  = sofaStats?.homeShotsOffTarget,
+            awayShotsOffTarget  = sofaStats?.awayShotsOffTarget,
+        ))
     }
 
     private data class ParsedOdds(

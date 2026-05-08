@@ -85,6 +85,12 @@ betplay:
     username: "REPLACE_WITH_BETPLAY_USERNAME"  # override in application-local.yml
     password: "REPLACE_WITH_BETPLAY_PASSWORD"  # override in application-local.yml
 
+  sofascore:
+    # Set to false to disable SofaScore stats gathering (no browser launched)
+    enabled: true
+    # Set to false to show the browser window (useful for debugging bot-detection issues)
+    headless: true
+
   betting:
     # Set to true to enable automatic bet placement (dry-run mode by default)
     enabled: true

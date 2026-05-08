@@ -31,4 +31,23 @@ data class FootballLiveStats(
 
     @Column(name = "away_red_cards")
     val awayRedCards: Int? = null,
+
+    // SofaScore stats
+    @Column(name = "home_possession")
+    val homePossession: Int? = null,
+
+    @Column(name = "away_possession")
+    val awayPossession: Int? = null,
+
+    @Column(name = "home_shots_on_target")
+    val homeShotsOnTarget: Int? = null,
+
+    @Column(name = "away_shots_on_target")
+    val awayShotsOnTarget: Int? = null,
+
+    @Column(name = "home_shots_off_target")
+    val homeShotsOffTarget: Int? = null,
+
+    @Column(name = "away_shots_off_target")
+    val awayShotsOffTarget: Int? = null,
 )

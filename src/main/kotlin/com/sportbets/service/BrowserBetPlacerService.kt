@@ -134,7 +134,9 @@ class BrowserBetPlacerService(
             return BetResult.Failed
         }
 
-        val url = "https://betplay.com.co/apuestas#event/$externalId"
+        // Live events use the /live/ path — without it, Betplay's SPA may not render the event
+        // view and will show the homepage skeleton indefinitely.
+        val url = "https://betplay.com.co/apuestas#event/live/$externalId"
         log.info("[Browser] Navigating to {}", url)
         val t0 = System.currentTimeMillis()
         try {
@@ -147,13 +149,26 @@ class BrowserBetPlacerService(
         }
         log.info("[Browser] Navigation done — {}ms elapsed", System.currentTimeMillis() - t0)
 
-        // Wait until Kambi's outcome buttons are rendered (replaces fixed 4s sleep)
+        // Wait until Kambi's outcome buttons are rendered. If buttons don't appear in 15s,
+        // fall back to waiting for section header text — handles pages where the bet-offer
+        // list loads but the outcome button class hasn't been stamped yet.
         try {
             page.waitForSelector("button[class*='outcome'], .KambiBC-outcome-list__outcome",
                 Page.WaitForSelectorOptions().setTimeout(15_000.0))
             log.info("[Browser] Outcome buttons detected — {}ms elapsed", System.currentTimeMillis() - t0)
         } catch (_: Exception) {
-            log.warn("[Browser] Outcome buttons not detected within 15s — proceeding anyway ({}ms elapsed)", System.currentTimeMillis() - t0)
+            try {
+                page.waitForFunction(
+                    "() => document.body.innerText.includes('Resultado Final') || " +
+                    "document.body.innerText.includes('Doble Oportunidad') || " +
+                    "document.body.innerText.includes('Prórroga incluida')",
+                    null,
+                    Page.WaitForFunctionOptions().setTimeout(15_000.0)
+                )
+                log.info("[Browser] Section content detected via text — {}ms elapsed", System.currentTimeMillis() - t0)
+            } catch (_: Exception) {
+                log.warn("[Browser] Event content not detected within 30s — proceeding anyway ({}ms elapsed)", System.currentTimeMillis() - t0)
+            }
         }
 
         dismissPopups(page)
@@ -447,31 +462,31 @@ class BrowserBetPlacerService(
 
         // Primary path: click by Kambi outcomeId.
         // Kambi doesn't standardise where it puts the outcome ID in the DOM — scan every
-        // attribute on every visible button (and its closest <li> wrapper) for a value that
-        // matches the outcomeId. Avoids all section-label ambiguity.
+        // attribute on every visible clickable element for a value matching the outcomeId.
+        // DC markets use <li> items (not <button>), so we must check button, li, and a.
         if (outcomeId != null) {
             val clicked = runCatching {
                 page.evaluate("""
                     (id) => {
                         const idStr = String(id);
-                        const buttons = Array.from(document.querySelectorAll('button'));
-                        for (const btn of buttons) {
-                            if (btn.offsetParent === null) continue;
-                            // Check button's own attributes
-                            for (const attr of btn.attributes) {
+                        const els = Array.from(document.querySelectorAll('button, li, a, [role="button"]'));
+                        for (const el of els) {
+                            if (el.offsetParent === null) continue;
+                            // Check element's own attributes
+                            for (const attr of el.attributes) {
                                 if (attr.value === idStr) {
-                                    btn.scrollIntoView({ block: 'center' });
-                                    btn.click();
-                                    return 'btn-attr:' + attr.name;
+                                    el.scrollIntoView({ block: 'center' });
+                                    el.click();
+                                    return 'el-attr:' + attr.name;
                                 }
                             }
-                            // Check closest <li> or <div> wrapper (Kambi often puts IDs there)
-                            const wrapper = btn.closest('li') || btn.closest('[data-outcome-id]') || btn.closest('[data-id]');
+                            // Check closest wrapper (Kambi often puts IDs on a parent container)
+                            const wrapper = el.closest('[data-outcome-id]') || el.closest('[data-id]');
                             if (wrapper) {
                                 for (const attr of wrapper.attributes) {
                                     if (attr.value === idStr) {
-                                        btn.scrollIntoView({ block: 'center' });
-                                        btn.click();
+                                        el.scrollIntoView({ block: 'center' });
+                                        el.click();
                                         return 'wrapper-attr:' + attr.name;
                                     }
                                 }
@@ -650,7 +665,8 @@ class BrowserBetPlacerService(
                     for (let i = 0; i < 8; i++) {
                         if (!probe || probe === document.body) break;
                         const btns = Array.from(probe.querySelectorAll(
-                            'button[class*="outcome"], .KambiBC-outcome-list__outcome, [class*="OutcomeButton"], button'
+                            'button[class*="outcome"], li[class*="outcome"], a[class*="outcome"], ' +
+                            '.KambiBC-outcome-list__outcome, [class*="OutcomeButton"], button, li, a'
                         )).filter(b => b.offsetParent !== null && isOutcomeBtn(b));
                         if (btns.length > 0) return 'already-expanded';
                         probe = probe.parentElement;
@@ -700,11 +716,14 @@ class BrowserBetPlacerService(
                         // prevents reaching the broad "Apuestas Seleccionadas" container that
                         // groups unrelated markets (e.g. "Siguiente tiro de campo") together with
                         // "Prórroga incluida", which would cause the wrong button to be picked.
+                        // DC markets render outcomes as <li> items (not <button>), so we include
+                        // li and a in the selector alongside the standard button selectors.
                         let container = header.parentElement;
                         for (let i = 0; i < 3; i++) {
                             if (!container || container === document.body) break;
                             const btns = Array.from(container.querySelectorAll(
-                                'button[class*="outcome"], .KambiBC-outcome-list__outcome, [class*="OutcomeButton"], button'
+                                'button[class*="outcome"], li[class*="outcome"], a[class*="outcome"], ' +
+                                '.KambiBC-outcome-list__outcome, [class*="OutcomeButton"], button, li, a'
                             )).filter(b => b.offsetParent !== null && isOutcomeBtn(b));
                             if (btns.length > index) {
                                 btns[index].scrollIntoView({ block: 'center' });
@@ -716,7 +735,7 @@ class BrowserBetPlacerService(
 
                         // Strategy 2: walk FORWARD through siblings from the header.
                         // Used when the DOM is flat (no per-section wrapper div). Collect outcome
-                        // buttons until we hit an element whose first text line looks like another
+                        // items until we hit an element whose first text line looks like another
                         // section header (non-numeric, non-DC-label text of meaningful length).
                         const isSectionHeader = el => {
                             const t = (el.innerText || '').trim().split('\n')[0].trim();
@@ -727,10 +746,11 @@ class BrowserBetPlacerService(
                         let steps = 0;
                         while (cursor && steps < 30) {
                             if (isSectionHeader(cursor)) break;
-                            const btns = Array.from(cursor.querySelectorAll('button'))
+                            const btns = Array.from(cursor.querySelectorAll('button, li, a'))
                                 .filter(b => b.offsetParent !== null && isOutcomeBtn(b));
                             collected.push(...btns);
-                            if (isOutcomeBtn(cursor) && cursor.tagName === 'BUTTON' && cursor.offsetParent) {
+                            const tag = cursor.tagName;
+                            if (isOutcomeBtn(cursor) && (tag === 'BUTTON' || tag === 'LI' || tag === 'A') && cursor.offsetParent) {
                                 collected.push(cursor);
                             }
                             if (collected.length > index) {

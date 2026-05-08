@@ -93,7 +93,7 @@ class SofaScoreDiscovery : ApplicationRunner {
             log.info("Navigating to sofascore.com/football/live ...")
             try {
                 page.navigate(
-                    "https://www.sofascore.com/football/live",
+                    "https://www.sofascore.com",
                     Page.NavigateOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED).setTimeout(30000.0)
                 )
             } catch (e: Exception) {
