@@ -18,8 +18,9 @@ import org.springframework.stereotype.Component
  *   ./gradlew bootRun --args="--spring.profiles.active=test-browser-bet"
  *
  * Optional args:
- *   --external-id=1027380893   target a specific match by its Kambi event ID
- *   --side=HOME                which outcome to click: HOME, DRAW, or AWAY (default: HOME)
+ *   --external-id=1027380893      target a specific match by its Kambi event ID
+ *   --side=HOME                   which outcome to click: HOME, DRAW, or AWAY (default: HOME)
+ *   --market=DOBLE_OPORTUNIDAD    bet market: RESULTADO_FINAL (default) or DOBLE_OPORTUNIDAD
  */
 @Component
 @Profile("test-browser-bet")
@@ -36,6 +37,7 @@ class TestBrowserBetRunner(
 
         val externalIdArg = args.getOptionValues("external-id")?.firstOrNull()
         val side = args.getOptionValues("side")?.firstOrNull()?.uppercase() ?: "HOME"
+        val market = args.getOptionValues("market")?.firstOrNull()?.uppercase() ?: "RESULTADO_FINAL"
 
         val match = if (externalIdArg != null) {
             matchRepository.findByExternalId(externalIdArg)
@@ -53,14 +55,18 @@ class TestBrowserBetRunner(
 
         // Pick outcomeId from the latest snapshot if available
         val snapshot = oddsSnapshotRepository.findTopByMatchIdOrderByCapturedAtDesc(match.id)
-        val outcomeId = when (side) {
-            "AWAY" -> snapshot?.awayOutcomeId
-            "DRAW" -> snapshot?.drawOutcomeId
-            else   -> snapshot?.homeOutcomeId
+        val outcomeId = when {
+            market == "DOBLE_OPORTUNIDAD" -> when (side) {
+                "AWAY" -> snapshot?.awayDrawOutcomeId
+                else   -> snapshot?.homeDrawOutcomeId
+            }
+            side == "AWAY" -> snapshot?.awayOutcomeId
+            side == "DRAW" -> snapshot?.drawOutcomeId
+            else           -> snapshot?.homeOutcomeId
         }
 
-        log.info("Target: {} vs {} | externalId={} | side={} | outcomeId={}",
-            match.homeTeam, match.awayTeam, match.externalId, side, outcomeId)
+        log.info("Target: {} vs {} | externalId={} | side={} | market={} | outcomeId={}",
+            match.homeTeam, match.awayTeam, match.externalId, side, market, outcomeId)
         log.info("Launching browser in 3 seconds... (Ctrl+C to abort)")
         Thread.sleep(3_000)
 
@@ -70,6 +76,7 @@ class TestBrowserBetRunner(
             favoriteSide = side,
             matchDesc    = "${match.homeTeam} vs ${match.awayTeam}",
             triggerOdds  = 1.0,  // test runner — no deviation check intended
+            betMarket    = market,
         )
 
         log.info("=== TEST RESULT: {} ===", result)

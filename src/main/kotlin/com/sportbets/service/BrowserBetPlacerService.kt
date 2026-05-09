@@ -30,6 +30,7 @@ class BrowserBetPlacerService(
     @Value("\${betplay.betting.max-odds-deviation-pct:15.0}") private val maxOddsDeviationPct: Double,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+    private val lastChromeRestart = AtomicLong(0L)
 
     fun testLogin(): Boolean {
         log.info("[Browser] === LOGIN TEST — no bet will be placed ===")
@@ -97,12 +98,38 @@ class BrowserBetPlacerService(
                     Thread.sleep(3_000)
                 } else {
                     log.error("[Browser] Cannot connect to Chrome on port {} after 3 attempts. " +
-                        "If Chrome is running, macOS may have suspended it — run start-chrome.sh. " +
                         "Last error ({}): {}", cdpPort, e.javaClass.simpleName, e.message?.take(200))
+                    tryAutoRestartChrome()
                 }
             }
         }
         return null
+    }
+
+    private fun tryAutoRestartChrome() {
+        val now = System.currentTimeMillis()
+        val cooldownMs = 5 * 60 * 1000L
+        if (now - lastChromeRestart.get() < cooldownMs) {
+            log.warn("[Browser] Chrome auto-restart skipped — already attempted within the last 5 minutes")
+            return
+        }
+        lastChromeRestart.set(now)
+        val script = File("start-chrome.sh")
+        if (!script.exists()) {
+            log.error("[Browser] start-chrome.sh not found at {} — cannot auto-restart Chrome", script.absolutePath)
+            return
+        }
+        log.warn("[Browser] Chrome unreachable — attempting auto-restart via start-chrome.sh")
+        try {
+            val result = ProcessBuilder("bash", script.absolutePath)
+                .redirectErrorStream(true)
+                .start()
+                .also { it.waitFor() }
+            log.info("[Browser] start-chrome.sh exited with code {} — waiting 6s for Chrome to come up", result.exitValue())
+            Thread.sleep(6_000)
+        } catch (e: Exception) {
+            log.error("[Browser] Failed to execute start-chrome.sh: {}", e.message)
+        }
     }
 
     private fun executeBet(
@@ -696,10 +723,25 @@ class BrowserBetPlacerService(
             log.info("[Browser] JS: expanded '{}' section ({})", sectionLabel, jsExpandResult)
             page.waitForTimeout(700.0)
 
+            // maxBtns caps Strategy 1 to prevent clicking from a container that is too broad.
+            // Basketball (PRORROGA_INCLUIDA): exactly 2 outcome buttons — cap at 4.
+            // DC (DOBLE_OPORTUNIDAD): exactly 3 outcome buttons (1X/12/X2) — cap at 5.
+            // Outright (RESULTADO_FINAL): no cap needed (3 buttons, narrow container).
+            val maxBtns = when (betMarket) {
+                "PRORROGA_INCLUIDA" -> 4
+                "DOBLE_OPORTUNIDAD" -> 5
+                else -> 999
+            }
+            // DC section wrapper sits 4+ levels above its header in Kambi's React DOM.
+            // The expand JS walks 8 levels and finds the buttons; Strategy 1 needs the
+            // same depth to reach the section-level container. Basketball and outright
+            // sections are shallower (1-2 levels) so 3 is fine there.
+            val maxDepth = if (betMarket == "DOBLE_OPORTUNIDAD") 6 else 3
+
             val jsClicked = runCatching {
                 page.evaluate("""
                     (args) => {
-                        const [label, index, findFirst] = args;
+                        const [label, index, findFirst, maxBtns, maxDepth] = args;
                         let all = Array.from(document.querySelectorAll('*'));
                         if (!findFirst) all = all.reverse();
                         const header = all.find(el =>
@@ -708,24 +750,26 @@ class BrowserBetPlacerService(
                         if (!header) return 'header-not-found';
                         const isOutcomeBtn = b => {
                             const t = (b.innerText || '').trim();
+                            // Accept outcome-class elements even when text shows suspended state ("—", "Suspendido")
+                            if (b.className && /outcome/i.test(String(b.className))) return true;
                             return /^\d+[,.]?\d*$/.test(t) || /^[1X2]+$/.test(t) || /\d+[,.]\d+/.test(t);
                         };
 
-                        // Strategy 1: walk UP at most 3 levels.
-                        // A section wrapper is always 1-2 levels above the header. Capping at 3
-                        // prevents reaching the broad "Apuestas Seleccionadas" container that
-                        // groups unrelated markets (e.g. "Siguiente tiro de campo") together with
-                        // "Prórroga incluida", which would cause the wrong button to be picked.
+                        // Strategy 1: walk UP at most maxDepth levels.
+                        // DC sections sit 4+ levels deep in Kambi's React DOM (maxDepth=6).
+                        // Basketball and outright sections are shallower (maxDepth=3).
+                        // maxBtns guard: prevents clicking from a container that is too broad
+                        // (e.g. the "Apuestas Seleccionadas" wrapper that spans all markets).
                         // DC markets render outcomes as <li> items (not <button>), so we include
                         // li and a in the selector alongside the standard button selectors.
                         let container = header.parentElement;
-                        for (let i = 0; i < 3; i++) {
+                        for (let i = 0; i < maxDepth; i++) {
                             if (!container || container === document.body) break;
                             const btns = Array.from(container.querySelectorAll(
                                 'button[class*="outcome"], li[class*="outcome"], a[class*="outcome"], ' +
                                 '.KambiBC-outcome-list__outcome, [class*="OutcomeButton"], button, li, a'
                             )).filter(b => b.offsetParent !== null && isOutcomeBtn(b));
-                            if (btns.length > index) {
+                            if (btns.length > index && btns.length <= maxBtns) {
                                 btns[index].scrollIntoView({ block: 'center' });
                                 btns[index].click();
                                 return 'clicked-up' + i + '-' + btns.length;
@@ -737,12 +781,18 @@ class BrowserBetPlacerService(
                         // Used when the DOM is flat (no per-section wrapper div). Collect outcome
                         // items until we hit an element whose first text line looks like another
                         // section header (non-numeric, non-DC-label text of meaningful length).
+                        // For basketball, this correctly picks up only the HOME/AWAY buttons
+                        // immediately after "Prórroga incluida", ignoring "Combinadas para ti"
+                        // buttons that appear before the header in DOM order.
+                        // If header has no next sibling (nested structure), also try the next
+                        // sibling of header's parent container.
                         const isSectionHeader = el => {
                             const t = (el.innerText || '').trim().split('\n')[0].trim();
                             return t.length > 3 && !isOutcomeBtn({innerText: t});
                         };
                         const collected = [];
-                        let cursor = header.nextElementSibling;
+                        let cursor = header.nextElementSibling
+                            || (header.parentElement ? header.parentElement.nextElementSibling : null);
                         let steps = 0;
                         while (cursor && steps < 30) {
                             if (isSectionHeader(cursor)) break;
@@ -761,9 +811,27 @@ class BrowserBetPlacerService(
                             cursor = cursor.nextElementSibling;
                             steps++;
                         }
+                        // Strategy 2.5: DC text-based fallback.
+                        // If Strategy 1 still misses (e.g. container > 5 buttons at every level),
+                        // search for a button whose FIRST text line is "1X" or "X2".
+                        // DC buttons often have multi-line innerText ("1X\n2.10"), so we check
+                        // only the first line — not the full trimmed text.
+                        if (label === 'Doble Oportunidad') {
+                            const dcText = index === 0 ? '1X' : 'X2';
+                            // offsetParent check omitted — suspended DC buttons may be visually hidden but
+                            // still receive .click(); first-line label "1X"/"X2" is specific enough.
+                            const dcBtn = Array.from(document.querySelectorAll('button, li, a')).find(el =>
+                                (el.innerText || '').trim().split('\n')[0].trim() === dcText
+                            );
+                            if (dcBtn) {
+                                dcBtn.scrollIntoView({ block: 'center' });
+                                dcBtn.click();
+                                return 'clicked-dc-' + dcText;
+                            }
+                        }
                         return 'buttons-not-found';
                     }
-                """, listOf(sectionLabel, positionIndex, findFirst))
+                """, listOf(sectionLabel, positionIndex, findFirst, maxBtns, maxDepth))
             }.getOrNull()?.toString()
 
             when {

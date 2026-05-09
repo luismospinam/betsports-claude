@@ -77,7 +77,7 @@ class SofaScoreClient(
                 val sfAway = event["awayTeam"]?.get("name")?.asText() ?: continue
                 if (namesMatch(homeTeam, sfHome) && namesMatch(awayTeam, sfAway)) {
                     val id = event["id"]?.asText()
-                    log.info("SofaScore match found for {} vs {}: id={}", homeTeam, awayTeam, id)
+                    log.debug("SofaScore match found for {} vs {}: id={}", homeTeam, awayTeam, id)
                     return id
                 }
             }
@@ -123,7 +123,7 @@ class SofaScoreClient(
                 homeShotsOffTarget = values["shotsOffGoal"]?.first,
                 awayShotsOffTarget = values["shotsOffGoal"]?.second,
             )
-            log.info("SofaScore stats ok [{} vs {}] id={}: poss {}:{} shots-on {}:{} shots-off {}:{}",
+            log.debug("SofaScore stats ok [{} vs {}] id={}: poss {}:{} shots-on {}:{} shots-off {}:{}",
                 homeTeam, awayTeam, sofaScoreId,
                 stats.homePossession, stats.awayPossession,
                 stats.homeShotsOnTarget, stats.awayShotsOnTarget,
