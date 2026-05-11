@@ -29,6 +29,7 @@ Thumbs.db
 
 # Discovery output (contains intercepted API URLs — not sensitive but not needed in git)
 betplay-api-discovery.txt
+sofascore-discovery-*.txt
 
 # Auth token (contains live Betplay bearer token — never commit this)
 betplay-auth.json

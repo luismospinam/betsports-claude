@@ -1,5 +1,6 @@
 package com.sportbets.repository
 
+import com.sportbets.model.BasketballLiveStats
 import com.sportbets.model.BettingAlert
 import com.sportbets.model.FootballLiveStats
 import com.sportbets.model.Match
@@ -50,6 +51,11 @@ interface OddsSnapshotRepository : JpaRepository<OddsSnapshot, Long> {
 @Repository
 interface FootballLiveStatsRepository : JpaRepository<FootballLiveStats, Long> {
     fun findBySnapshotId(snapshotId: Long): FootballLiveStats?
+}
+
+@Repository
+interface BasketballLiveStatsRepository : JpaRepository<BasketballLiveStats, Long> {
+    fun findBySnapshotId(snapshotId: Long): BasketballLiveStats?
 }
 
 @Repository

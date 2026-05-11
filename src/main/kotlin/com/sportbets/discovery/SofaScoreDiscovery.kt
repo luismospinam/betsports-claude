@@ -16,17 +16,19 @@ import org.springframework.stereotype.Component
  *
  * How to run:
  *   ./gradlew bootRun --args="--spring.profiles.active=discover-sofascore"
+ *   ./gradlew bootRun --args="--spring.profiles.active=discover-sofascore --sport=basketball"
  *
  * What it does:
- *   1. Launches a headed browser and navigates to sofascore.com/football/live
+ *   1. Launches a headed browser and navigates to sofascore.com
  *   2. Intercepts all JSON calls to api.sofascore.com
  *   3. Captures full response bodies for stats/event endpoints
- *   4. Waits for you to click into live matches
- *   5. Saves results to sofascore-discovery.txt
+ *   4. Auto-fetches /api/v1/sport/<sport>/events/live and samples 5 event statistics
+ *   5. Waits for you to click into live matches for additional captures
+ *   6. Saves results to sofascore-discovery-<sport>.txt
  *
  * What to look for:
  *   Navigate to any live match → click "Statistics" tab.
- *   The tool will capture the endpoint + full JSON with shots, possession, etc.
+ *   The tool will capture the endpoint + full JSON.
  * ============================================================
  */
 @Component
@@ -35,17 +37,25 @@ class SofaScoreDiscovery : ApplicationRunner {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
-    private val statsKeywords = listOf(
-        "/statistics", "/events/live", "/sport/football",
-        "sofascore", "/event/", "/incidents", "/lineups"
-    )
-
     override fun run(args: ApplicationArguments) {
         val waitSeconds = args.getOptionValues("wait")?.firstOrNull()?.toLongOrNull() ?: 180L
-        log.info("=== SOFASCORE API DISCOVERY — {}s window ===", waitSeconds)
+        val sport = args.getOptionValues("sport")?.firstOrNull()?.lowercase() ?: "football"
+        val statsKeywords = listOf(
+            "/statistics", "/events/live", "/sport/$sport",
+            "sofascore", "/event/", "/incidents", "/lineups"
+        )
+        log.info("=== SOFASCORE API DISCOVERY — sport={}, {}s window ===", sport, waitSeconds)
         log.info("A browser will open. Navigate to a live match and click the Statistics tab.")
 
         val captured = mutableMapOf<String, CapturedEntry>()
+
+        fun isRelevant(url: String): Boolean {
+            val lower = url.lowercase()
+            if (!lower.contains("sofascore")) return false
+            if (statsKeywords.none { lower.contains(it) }) return false
+            if (lower.contains(".js") || lower.contains(".css") || lower.contains(".png")) return false
+            return true
+        }
 
         try { Playwright.create().use { playwright ->
             val browser = playwright.chromium().launch(
@@ -90,7 +100,7 @@ class SofaScoreDiscovery : ApplicationRunner {
                 }
             }
 
-            log.info("Navigating to sofascore.com/football/live ...")
+            log.info("Navigating to sofascore.com (sport={}) ...", sport)
             try {
                 page.navigate(
                     "https://www.sofascore.com",
@@ -104,11 +114,11 @@ class SofaScoreDiscovery : ApplicationRunner {
             Thread.sleep(15_000)
 
             // Fetch live events list from within the browser context (has session cookies)
-            log.info("Fetching live football events via in-browser fetch...")
+            log.info("Fetching live {} events via in-browser fetch...", sport)
             val liveEventsJson = try {
                 page.evaluate("""
                     async () => {
-                        const r = await fetch('/api/v1/sport/football/events/live');
+                        const r = await fetch('/api/v1/sport/$sport/events/live');
                         return await r.text();
                     }
                 """.trimIndent()) as? String
@@ -148,8 +158,8 @@ class SofaScoreDiscovery : ApplicationRunner {
                 }
 
                 synchronized(captured) {
-                    captured["https://www.sofascore.com/api/v1/sport/football/events/live"] =
-                        CapturedEntry("GET", "https://www.sofascore.com/api/v1/sport/football/events/live",
+                    captured["https://www.sofascore.com/api/v1/sport/$sport/events/live"] =
+                        CapturedEntry("GET", "https://www.sofascore.com/api/v1/sport/$sport/events/live",
                             emptyMap(), liveEventsJson.take(3000))
                 }
             }
@@ -157,21 +167,13 @@ class SofaScoreDiscovery : ApplicationRunner {
             log.info("You still have {}s to click into matches for additional captures...", waitSeconds)
             Thread.sleep(waitSeconds * 1_000)
             try { browser.close() } catch (_: Throwable) { }
-        } } finally { saveResults(captured) }
+        } } finally { saveResults(captured, sport) }
     }
 
-    private fun isRelevant(url: String): Boolean {
-        val lower = url.lowercase()
-        if (!lower.contains("sofascore")) return false
-        if (statsKeywords.none { lower.contains(it) }) return false
-        if (lower.contains(".js") || lower.contains(".css") || lower.contains(".png")) return false
-        return true
-    }
-
-    private fun saveResults(captured: Map<String, CapturedEntry>) {
+    private fun saveResults(captured: Map<String, CapturedEntry>, sport: String) {
         val sb = StringBuilder()
         sb.appendLine("=".repeat(70))
-        sb.appendLine("SOFASCORE API DISCOVERY — ${captured.size} endpoints captured")
+        sb.appendLine("SOFASCORE API DISCOVERY — sport=$sport — ${captured.size} endpoints captured")
         sb.appendLine("=".repeat(70))
         sb.appendLine()
 
@@ -179,12 +181,12 @@ class SofaScoreDiscovery : ApplicationRunner {
             sb.appendLine("[${entry.method}] ${entry.url}")
             entry.responseBody?.let { body ->
                 sb.appendLine("  RESPONSE (${body.length} bytes):")
-                sb.appendLine(body.take(2000).prependIndent("    "))
+                sb.appendLine(body.take(8000).prependIndent("    "))
             }
             sb.appendLine()
         }
 
-        val file = java.io.File("sofascore-discovery.txt")
+        val file = java.io.File("sofascore-discovery-$sport.txt")
         file.writeText(sb.toString())
         log.info("Results saved to {} ({} endpoints)", file.absolutePath, captured.size)
     }

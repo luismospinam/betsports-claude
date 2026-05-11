@@ -135,6 +135,126 @@ class SofaScoreClient(
         }
     }
 
+    /**
+     * Looks up the SofaScore basketball event ID for a live match by fuzzy-matching team names
+     * against the current live basketball events list.
+     */
+    fun findBasketballEventId(homeTeam: String, awayTeam: String): String? {
+        val json = evalFetch("/api/v1/sport/basketball/events/live") ?: return null
+        return try {
+            val root = objectMapper.readTree(json)
+            if (root["httpError"] != null) {
+                log.warn("SofaScore basketball live events HTTP {}", root["httpError"].asInt())
+                return null
+            }
+            val events = root["events"] ?: return null
+            for (event in events) {
+                val sfHome = event["homeTeam"]?.get("name")?.asText() ?: continue
+                val sfAway = event["awayTeam"]?.get("name")?.asText() ?: continue
+                if (namesMatch(homeTeam, sfHome) && namesMatch(awayTeam, sfAway)) {
+                    val id = event["id"]?.asText()
+                    log.debug("SofaScore basketball match found for {} vs {}: id={}", homeTeam, awayTeam, id)
+                    return id
+                }
+            }
+            log.info("SofaScore: no basketball match found for {} vs {} in live events", homeTeam, awayTeam)
+            null
+        } catch (e: Exception) {
+            log.warn("SofaScore: failed to parse basketball live events: {}", e.message)
+            null
+        }
+    }
+
+    /**
+     * Fetches live basketball statistics for the given SofaScore event ID. Returns the full
+     * "ALL"-period stat block (scoring splits, rebounds, assists, fouls, lead metrics).
+     */
+    fun fetchBasketballStats(sofaScoreId: String, homeTeam: String = "", awayTeam: String = ""): SofaScoreBasketballStats? {
+        val json = evalFetch("/api/v1/event/$sofaScoreId/statistics") ?: return null
+        return try {
+            val root = objectMapper.readTree(json)
+            if (root["httpError"] != null) {
+                log.info("SofaScore basketball stats unavailable (HTTP {}) for id={} [{} vs {}]",
+                    root["httpError"].asInt(), sofaScoreId, homeTeam, awayTeam)
+                return null
+            }
+            if (root["error"] != null) return null
+
+            val allPeriod = root["statistics"]
+                ?.firstOrNull { it["period"]?.asText() == "ALL" } ?: return null
+
+            // Map stat key -> raw item (so we can pull homeValue/awayValue/homeTotal/awayTotal as needed)
+            val items = mutableMapOf<String, com.fasterxml.jackson.databind.JsonNode>()
+            allPeriod["groups"]?.forEach { group ->
+                group["statisticsItems"]?.forEach { item ->
+                    val key = item["key"]?.asText() ?: return@forEach
+                    items[key] = item
+                }
+            }
+
+            fun homeValue(key: String) = items[key]?.get("homeValue")?.asInt()
+            fun awayValue(key: String) = items[key]?.get("awayValue")?.asInt()
+            fun homeTotal(key: String) = items[key]?.get("homeTotal")?.asInt()
+            fun awayTotal(key: String) = items[key]?.get("awayTotal")?.asInt()
+
+            val stats = SofaScoreBasketballStats(
+                homeFreeThrowsMade         = homeValue("freeThrowsScored"),
+                homeFreeThrowsAttempted    = homeTotal("freeThrowsScored"),
+                awayFreeThrowsMade         = awayValue("freeThrowsScored"),
+                awayFreeThrowsAttempted    = awayTotal("freeThrowsScored"),
+                homeTwoPointersMade        = homeValue("twoPointersScored"),
+                homeTwoPointersAttempted   = homeTotal("twoPointersScored"),
+                awayTwoPointersMade        = awayValue("twoPointersScored"),
+                awayTwoPointersAttempted   = awayTotal("twoPointersScored"),
+                homeThreePointersMade      = homeValue("threePointersScored"),
+                homeThreePointersAttempted = homeTotal("threePointersScored"),
+                awayThreePointersMade      = awayValue("threePointersScored"),
+                awayThreePointersAttempted = awayTotal("threePointersScored"),
+                homeFieldGoalsMade         = homeValue("fieldGoalsScored"),
+                homeFieldGoalsAttempted    = homeTotal("fieldGoalsScored"),
+                awayFieldGoalsMade         = awayValue("fieldGoalsScored"),
+                awayFieldGoalsAttempted    = awayTotal("fieldGoalsScored"),
+                homeRebounds               = homeValue("rebounds"),
+                awayRebounds               = awayValue("rebounds"),
+                homeDefensiveRebounds      = homeValue("defensiveRebounds"),
+                awayDefensiveRebounds      = awayValue("defensiveRebounds"),
+                homeOffensiveRebounds      = homeValue("offensiveRebounds"),
+                awayOffensiveRebounds      = awayValue("offensiveRebounds"),
+                homeAssists                = homeValue("assists"),
+                awayAssists                = awayValue("assists"),
+                homeTurnovers              = homeValue("turnovers"),
+                awayTurnovers              = awayValue("turnovers"),
+                homeSteals                 = homeValue("steals"),
+                awaySteals                 = awayValue("steals"),
+                homeBlocks                 = homeValue("blocks"),
+                awayBlocks                 = awayValue("blocks"),
+                homeTotalFouls             = homeValue("totalFouls"),
+                awayTotalFouls             = awayValue("totalFouls"),
+                homeTimeouts               = homeValue("timeouts"),
+                awayTimeouts               = awayValue("timeouts"),
+                homeMaxPointsInARow        = homeValue("maxPointsInARow"),
+                awayMaxPointsInARow        = awayValue("maxPointsInARow"),
+                homeTimeSpentInLeadSec     = homeValue("timeSpentInLead"),
+                awayTimeSpentInLeadSec     = awayValue("timeSpentInLead"),
+                homeLeadChanges            = homeValue("leadChanges"),
+                awayLeadChanges            = awayValue("leadChanges"),
+                homeBiggestLead            = homeValue("biggestLead"),
+                awayBiggestLead            = awayValue("biggestLead"),
+            )
+            log.debug("SofaScore basketball stats ok [{} vs {}] id={}: FG {}:{} 3PT {}:{} REB {}:{} AST {}:{} TO {}:{}",
+                homeTeam, awayTeam, sofaScoreId,
+                stats.homeFieldGoalsMade, stats.awayFieldGoalsMade,
+                stats.homeThreePointersMade, stats.awayThreePointersMade,
+                stats.homeRebounds, stats.awayRebounds,
+                stats.homeAssists, stats.awayAssists,
+                stats.homeTurnovers, stats.awayTurnovers)
+            stats
+        } catch (e: Exception) {
+            log.warn("SofaScore: failed to parse basketball stats for id={}: {}", sofaScoreId, e.message)
+            null
+        }
+    }
+
     private fun evalFetch(path: String): String? {
         val p = page ?: return null
         val url = "https://api.sofascore.com$path"
@@ -195,5 +315,50 @@ class SofaScoreClient(
         val awayShotsOnTarget: Int?,
         val homeShotsOffTarget: Int?,
         val awayShotsOffTarget: Int?,
+    )
+
+    data class SofaScoreBasketballStats(
+        val homeFreeThrowsMade: Int?,
+        val homeFreeThrowsAttempted: Int?,
+        val awayFreeThrowsMade: Int?,
+        val awayFreeThrowsAttempted: Int?,
+        val homeTwoPointersMade: Int?,
+        val homeTwoPointersAttempted: Int?,
+        val awayTwoPointersMade: Int?,
+        val awayTwoPointersAttempted: Int?,
+        val homeThreePointersMade: Int?,
+        val homeThreePointersAttempted: Int?,
+        val awayThreePointersMade: Int?,
+        val awayThreePointersAttempted: Int?,
+        val homeFieldGoalsMade: Int?,
+        val homeFieldGoalsAttempted: Int?,
+        val awayFieldGoalsMade: Int?,
+        val awayFieldGoalsAttempted: Int?,
+        val homeRebounds: Int?,
+        val awayRebounds: Int?,
+        val homeDefensiveRebounds: Int?,
+        val awayDefensiveRebounds: Int?,
+        val homeOffensiveRebounds: Int?,
+        val awayOffensiveRebounds: Int?,
+        val homeAssists: Int?,
+        val awayAssists: Int?,
+        val homeTurnovers: Int?,
+        val awayTurnovers: Int?,
+        val homeSteals: Int?,
+        val awaySteals: Int?,
+        val homeBlocks: Int?,
+        val awayBlocks: Int?,
+        val homeTotalFouls: Int?,
+        val awayTotalFouls: Int?,
+        val homeTimeouts: Int?,
+        val awayTimeouts: Int?,
+        val homeMaxPointsInARow: Int?,
+        val awayMaxPointsInARow: Int?,
+        val homeTimeSpentInLeadSec: Int?,
+        val awayTimeSpentInLeadSec: Int?,
+        val homeLeadChanges: Int?,
+        val awayLeadChanges: Int?,
+        val homeBiggestLead: Int?,
+        val awayBiggestLead: Int?,
     )
 }

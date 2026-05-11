@@ -48,13 +48,15 @@ Run each section independently. Sections 1–3 work across all sports; 4–13 ar
 | **11 — Odds Drift Timeline** | Odds before and after each alert — are we catching the move early enough? |
 | **12 — Untapped Opportunities** | Finished matches with comebacks we never bet on (false negatives) |
 | **13 — Config Tuning Cheat Sheet** | Simulates different `odds-rise-threshold-pct` and `max-baseline-odds` values |
+| **16 — Stat-Conditioned Comeback Rate** | For trigger moments with `football_live_stats` attached, does possession / SOT / corners / red cards separate winners from losers? Re-run periodically as data accumulates |
 
-### Basketball (Sections 14–15)
+### Basketball (Sections 14–15, 17)
 
 | Section | Question answered |
 |---------|-------------------|
 | **14 — Basketball P&L by Period + Deficit** | Win rate and net units grouped by period (Q3/Q4/HT) and point-deficit band |
 | **15 — Basketball Comeback Rate** | Ground truth: of ALL times a basketball favorite was trailing in a monitored period, how often did they win? |
+| **17 — Stat-Conditioned Comeback Rate** | For trigger moments with `basketball_live_stats` attached, does 3PT% / FG% / TO diff / biggest-lead / time-in-lead separate winners? Re-run periodically as data accumulates |
 
 ### Key metric: `expected_value_pct` (Section 13A / future basketball equivalent)
 ```

@@ -116,10 +116,16 @@ class DiscordNotifier(
             "SKIPPED" -> "⚠️"
             else      -> "—"
         }
+        val marketTag = when (alert.market) {
+            "DOBLE_OPORTUNIDAD" -> " DC"
+            "RESULTADO_FINAL"   -> " comeback"
+            "PRORROGA_INCLUIDA" -> " comeback"
+            else                -> ""
+        }
+        val betOdds = alert.actualBetOdds ?: alert.currentOdds
         val notifLine = "$resultEmoji ${match.homeTeam} vs ${match.awayTeam} | " +
-            "${alert.scoreAtAlert ?: "?"} | ${alert.suggestedBet} | " +
-            "${"%.2f".format(alert.baselineOdds)}→${"%.2f".format(alert.currentOdds)} " +
-            "(+${"%.0f".format(alert.oddsIncreasePct)}%)"
+            "${alert.scoreAtAlert ?: "?"} | ${alert.suggestedBet}$marketTag @ " +
+            "${"%.2f".format(betOdds)} (trigger +${"%.0f".format(alert.oddsIncreasePct)}%)"
         val content = if (mentionId.isNotBlank()) "@everyone <@$mentionId>\n$notifLine" else "@everyone\n$notifLine"
 
         return mapOf("content" to content, "embeds" to listOf(embed))

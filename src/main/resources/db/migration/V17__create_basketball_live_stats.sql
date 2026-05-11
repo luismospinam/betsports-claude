@@ -1,0 +1,52 @@
+CREATE TABLE basketball_live_stats (
+    id                              BIGSERIAL PRIMARY KEY,
+    odds_snapshot_id                BIGINT NOT NULL UNIQUE REFERENCES odds_snapshots(id),
+
+    -- Scoring (made + attempted)
+    home_free_throws_made           INTEGER,
+    home_free_throws_attempted      INTEGER,
+    away_free_throws_made           INTEGER,
+    away_free_throws_attempted      INTEGER,
+    home_two_pointers_made          INTEGER,
+    home_two_pointers_attempted     INTEGER,
+    away_two_pointers_made          INTEGER,
+    away_two_pointers_attempted     INTEGER,
+    home_three_pointers_made        INTEGER,
+    home_three_pointers_attempted   INTEGER,
+    away_three_pointers_made        INTEGER,
+    away_three_pointers_attempted   INTEGER,
+    home_field_goals_made           INTEGER,
+    home_field_goals_attempted      INTEGER,
+    away_field_goals_made           INTEGER,
+    away_field_goals_attempted      INTEGER,
+
+    -- Other
+    home_rebounds                   INTEGER,
+    away_rebounds                   INTEGER,
+    home_defensive_rebounds         INTEGER,
+    away_defensive_rebounds         INTEGER,
+    home_offensive_rebounds         INTEGER,
+    away_offensive_rebounds         INTEGER,
+    home_assists                    INTEGER,
+    away_assists                    INTEGER,
+    home_turnovers                  INTEGER,
+    away_turnovers                  INTEGER,
+    home_steals                     INTEGER,
+    away_steals                     INTEGER,
+    home_blocks                     INTEGER,
+    away_blocks                     INTEGER,
+    home_total_fouls                INTEGER,
+    away_total_fouls                INTEGER,
+    home_timeouts                   INTEGER,
+    away_timeouts                   INTEGER,
+
+    -- Lead
+    home_max_points_in_a_row        INTEGER,
+    away_max_points_in_a_row        INTEGER,
+    home_time_spent_in_lead_sec     INTEGER,
+    away_time_spent_in_lead_sec     INTEGER,
+    home_lead_changes               INTEGER,
+    away_lead_changes               INTEGER,
+    home_biggest_lead               INTEGER,
+    away_biggest_lead               INTEGER
+);

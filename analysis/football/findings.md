@@ -266,3 +266,117 @@ However, the current LOSING_BY_1 DC bet fires **before** equalization at avg 2.5
 |------|---------|
 | `../betting_stats.sql` | Shared + football sections (1–13): P&L, odds rise bands, minute bands, baseline bands, ground truth, DC quality, halftime analysis, config simulation |
 | `opportunity_research.sql` | 7 sections: leading at half, over 2.5, multi-goal deficit, competition breakdown, home/away asymmetry, odds speed, post-alert goals |
+
+---
+
+## 13. Re-analysis (2026-05-09)
+
+**Data window:** 5,618 matches tracked / 5,082 finished / 408 alerts / 280 bets placed  
+**Stake assumed:** 1,000 COP per bet
+
+### Data Inventory
+
+| Metric | Value |
+|--------|-------|
+| Total matches tracked | 5,618 |
+| Finished matches | 5,082 |
+| Alerts fired | 408 |
+| Bets placed | 280 |
+
+### Overall P&L by Scenario + Market
+
+| Scenario | Market | Placed | Wins | Losses | Win% | Avg Odds | Net COP |
+|----------|--------|--------|------|--------|------|----------|---------|
+| LOSING_BY_1 | DOBLE_OPORTUNIDAD | 124 | 89 | 35 | **71.8%** | 1.491 | **−7,070** ❌ |
+| LOSING_BY_1 | RESULTADO_FINAL | 14 | 4 | 10 | 28.6% | 2.349 | **−5,350** ❌ |
+| TIED_HALFTIME | RESULTADO_FINAL | 125 | 48 | 77 | 38.4% | 1.874 | **−39,260** ❌ |
+| Legacy (no scenario) | RESULTADO_FINAL | 17 | 7 | 10 | 41.2% | 2.594 | −3,210 |
+
+### The DC paradox: 71.8% wins yet negative P&L
+
+The DOBLE_OPORTUNIDAD market has a 71.8% win rate — up from the 62.5% in the April report — but has flipped from +27,020 COP (48 bets) to −7,070 COP (124 bets). This is not a contradiction: it is an odds asymmetry problem.
+
+When the pre-match favorite has a very low baseline (e.g. 1.15–1.30), the DC odds at alert time are typically 1.10–1.30. Each win yields only 100–300 COP profit, but each loss costs 1,000 COP. At avg DC odds of ~1.30 the break-even win rate is **77%**, not 50%. The April result was small-sample luck; the larger dataset reveals the true edge is negative.
+
+The previous "+27,020 COP" figure also reflected the P&L flaw noted in Section 10 — DC bets were being scored at outright odds instead of DC odds, inflating reported profit. Both the arithmetic and the sample size were misleading.
+
+### LOSING_BY_1: Baseline Odds Band (new data)
+
+| Baseline Band | Placed | Wins | Win% | Avg Odds | Net COP |
+|---------------|--------|------|------|----------|---------|
+| < 1.30 | 36 | 26 | 72.2% | 1.626 | **+3,450** ✅ |
+| 1.30–1.39 | 18 | 15 | **83.3%** | 1.393 | **+870** ✅ |
+| 1.40–1.49 | 40 | 27 | 67.5% | 1.375 | **−5,490** ❌ |
+| 1.50–1.59 | 27 | 18 | 66.7% | 1.732 | **−5,300** ❌ |
+| 1.60+ | 17 | 7 | 41.2% | 2.838 | **−5,950** ❌ |
+
+**Profitable zone is baseline < 1.40.** This contradicts Section 10 (which identified 1.41–1.50 as the sweet spot) and Section 11 (which expanded back to 1.55). Both earlier windows were too small. With 138 resolved bets, the picture has stabilized: everything at or above 1.40 loses money. The 1.40–1.49 band has a high win rate (67.5%) but the DC odds at that range (~1.375 avg) are too low to compensate for losses.
+
+### LOSING_BY_1: Odds Rise Band (new data)
+
+| Rise Band | Placed | Wins | Win% | Net COP |
+|-----------|--------|------|------|---------|
+| 30–39% | 27 | 20 | 74.1% | **−3,100** ❌ |
+| 40–49% | 30 | 22 | 73.3% | **−1,070** ❌ |
+| 50–59% | 24 | 13 | 54.2% | **−6,880** ❌ |
+| 60–79% | 33 | 22 | 66.7% | **−4,120** ❌ |
+| **80–100%** | 24 | 16 | **66.7%** | **+2,750** ✅ |
+
+**Only the 80–100% rise band is profitable.** A larger odds move signals a genuine market reassessment (red card, dominant performance reversing), and crucially the DC odds at that point are high enough to justify the bet. The lower bands (30–79%) have high win rates but DC odds that are too compressed.
+
+### Ground Truth (2026-05-09)
+
+5,082 finished football matches → **457 had a losing-by-1 moment** → **11.7% comeback rate** across all matches with a 1-goal margin at some point. Placed bets are winning at 71.8%, confirming the odds filter selects for better cases — but the DC payout structure is not converting that selection edge into profit.
+
+### TIED_HALFTIME — Confirmed dead (2026-05-09)
+
+125 bets, 38.4% win, avg 1.874 odds, −39,260 COP. Consistent with all prior analysis. No action needed.
+
+### Config recommendations from this run
+
+| Parameter | Current | Recommended | Reason |
+|-----------|---------|-------------|--------|
+| `max-baseline-odds` | 1.55 | **1.40** | Everything above 1.40 is losing; 1.30–1.39 band is the best performer (83.3% win) |
+| `odds-rise-threshold-pct` | 30.0 | **80.0** | Only the 80–100% rise band is profitable; 30–79% all negative |
+
+Raising the rise threshold to 80% will sharply reduce bet frequency (~24 bets in the current window vs 138) but those bets are the only ones generating positive returns. The lower bands win often but win cheaply — the DC payout structure makes them unprofitable regardless of win rate.
+
+---
+
+## 14. Live-Stats Integration — first pass (2026-05-10)
+
+**Goal:** test whether live in-match stats (possession, shots on target, corners, red cards) can be used as an extra filter to improve the DC win-rate above the current 71.8% (still below the ~77% break-even at avg DC odds 1.30).
+
+**SQL:** `betting_stats.sql` Section 16 — for every LOSING_BY_1 + rise ≥30% moment with stats attached, group DC and outright comeback rates by stat band.
+
+### Data reality at run time
+
+| Stat source | Captured since | Trigger-moment rows |
+|-------------|---------------|---------------------|
+| Corners / yellow / red cards (Kambi liveData) | 2026-05-07 | ~45 |
+| Possession / shots on target (SofaScore) | 2026-05-08 | ~11 |
+
+The strategy only had two full days of stats history when this section was added. **No band can be promoted to a config filter today** — every "interesting-looking" cell is in the small-sample column.
+
+### Directional signals (caveat: every cell is <30 samples)
+
+| Hypothesis | Most-promising band | Samples | DC % | Note |
+|------------|---------------------|---------|------|------|
+| A — Possession | ≥65% fav possession | 5 | 100.0 | All 5 came back DC; need ≥30 to trust |
+| B — SOT ratio | ≥2× fav | 3 | 66.7 | Useless sample |
+| C — Red-card differential | fav +1 (man advantage) | 1 | 100.0 | Useless sample |
+| D — Corner differential | +2 to +3 in fav favor | 8 | 100.0 | Outright still only 37.5% — same wrong-payout problem |
+| E — Total SOT tempo | 3-5 total | 4 | 75.0 | Useless sample |
+
+The "no data" / "equal red cards" rows hold the bulk of the 45 moments. The all-equal-reds DC rate is **67.4% (n=43)** — directionally consistent with the 71.8% from the larger placed-bet sample in §13.
+
+### What this means for the strategy today
+
+1. **Do not wire any stat filter into `OddsMonitorService.checkAndFireAlert()` yet.** Sample sizes are insufficient to claim any threshold improves on the current selection.
+2. **The structural problem remains the DC payout asymmetry**, not the lack of stat info. Even a 100% DC win rate at ~1.30 DC odds barely outpaces the 80% rate at 1.30. Stats can sharpen win rate; they cannot fix the avg-odds math.
+
+### Re-run plan
+
+Section 16 is parameterised against the current `max-baseline-odds=1.55` and `odds-rise-threshold-pct=30` constants. **Re-run after ~2026-05-24** (≈2 weeks of stats accumulation, expected ~300+ trigger moments). Any band that shows ≥10pp separation from baseline DC rate **at n≥30** is a candidate for a new YAML knob (e.g. `min-fav-possession-pct`, `min-fav-corner-diff`).
+
+If by then the placed-bet DC rate has dropped further from 71.8% (consistent with the §13 finding that earlier samples were lucky), stat-based filtering becomes more important — a higher-confidence subset is the only way to push win rate to the ~77% break-even.

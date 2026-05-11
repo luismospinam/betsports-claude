@@ -1,10 +1,12 @@
 package com.sportbets.service
 
 import com.fasterxml.jackson.databind.JsonNode
+import com.sportbets.model.BasketballLiveStats
 import com.sportbets.model.BettingAlert
 import com.sportbets.model.Match
 import com.sportbets.model.MatchStatus
 import com.sportbets.model.OddsSnapshot
+import com.sportbets.repository.BasketballLiveStatsRepository
 import com.sportbets.repository.BettingAlertRepository
 import com.sportbets.repository.MatchRepository
 import com.sportbets.repository.OddsSnapshotRepository
@@ -13,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Live odds monitoring and betting strategy for basketball.
@@ -37,6 +40,8 @@ class BasketballOddsMonitorService(
     private val oddsSnapshotRepository: OddsSnapshotRepository,
     private val bettingAlertRepository: BettingAlertRepository,
     private val betPlacerService: BetPlacerService,
+    private val sofaScoreClient: SofaScoreClient,
+    private val basketballLiveStatsRepository: BasketballLiveStatsRepository,
     @Value("\${betplay.basketball.monitor.odds-rise-threshold-pct:30.0}") private val oddsRiseThresholdPct: Double,
     @Value("\${betplay.basketball.monitor.odds-rise-max-pct:120.0}") private val oddsRiseMaxPct: Double,
     @Value("\${betplay.basketball.monitor.max-alerts-per-match:1}") private val maxAlertsPerMatch: Int,
@@ -49,6 +54,10 @@ class BasketballOddsMonitorService(
     private val log = LoggerFactory.getLogger(javaClass)
 
     private val betPeriods: Set<String> by lazy { betPeriodsStr.split(",").map { it.trim() }.toSet() }
+
+    // matchId → SofaScore event ID (resolved once per live match, cached for the match lifetime;
+    // empty string sentinel = lookup attempted, no match found — don't retry)
+    private val sofaScoreIdCache = ConcurrentHashMap<Long, String>()
 
     @Transactional
     fun capturePreMatchOdds() {
@@ -103,6 +112,9 @@ class BasketballOddsMonitorService(
 
     private fun processLiveMatch(match: Match, liveWrapper: JsonNode?) {
         val snapshot = captureSnapshot(match, isPreMatch = false, liveWrapper = liveWrapper) ?: return
+
+        // Always capture live stats regardless of betting state — needed for historical analysis
+        saveLiveStats(match, snapshot)
 
         val placedAlerts = bettingAlertRepository.countByMatchIdAndBetStatusIn(match.id, listOf("PLACED", "DRY_RUN"))
         if (placedAlerts >= maxAlertsPerMatch) return
@@ -238,6 +250,61 @@ class BasketballOddsMonitorService(
             matchMinute   = clock?.path("minute")?.asInt(),
             periodId      = clock?.path("periodId")?.asText()?.takeIf { it.isNotEmpty() },
             capturedAt    = LocalDateTime.now()
+        ))
+    }
+
+    private fun saveLiveStats(match: Match, snapshot: OddsSnapshot) {
+        // Resolve SofaScore ID once per match (cached for match lifetime; empty string = looked up, not found)
+        val sofaScoreId = sofaScoreIdCache.getOrPut(match.id) {
+            sofaScoreClient.findBasketballEventId(match.homeTeam, match.awayTeam) ?: ""
+        }.takeIf { it.isNotBlank() } ?: return
+
+        val sofaStats = sofaScoreClient.fetchBasketballStats(sofaScoreId, match.homeTeam, match.awayTeam) ?: return
+
+        basketballLiveStatsRepository.save(BasketballLiveStats(
+            snapshot                   = snapshot,
+            homeFreeThrowsMade         = sofaStats.homeFreeThrowsMade,
+            homeFreeThrowsAttempted    = sofaStats.homeFreeThrowsAttempted,
+            awayFreeThrowsMade         = sofaStats.awayFreeThrowsMade,
+            awayFreeThrowsAttempted    = sofaStats.awayFreeThrowsAttempted,
+            homeTwoPointersMade        = sofaStats.homeTwoPointersMade,
+            homeTwoPointersAttempted   = sofaStats.homeTwoPointersAttempted,
+            awayTwoPointersMade        = sofaStats.awayTwoPointersMade,
+            awayTwoPointersAttempted   = sofaStats.awayTwoPointersAttempted,
+            homeThreePointersMade      = sofaStats.homeThreePointersMade,
+            homeThreePointersAttempted = sofaStats.homeThreePointersAttempted,
+            awayThreePointersMade      = sofaStats.awayThreePointersMade,
+            awayThreePointersAttempted = sofaStats.awayThreePointersAttempted,
+            homeFieldGoalsMade         = sofaStats.homeFieldGoalsMade,
+            homeFieldGoalsAttempted    = sofaStats.homeFieldGoalsAttempted,
+            awayFieldGoalsMade         = sofaStats.awayFieldGoalsMade,
+            awayFieldGoalsAttempted    = sofaStats.awayFieldGoalsAttempted,
+            homeRebounds               = sofaStats.homeRebounds,
+            awayRebounds               = sofaStats.awayRebounds,
+            homeDefensiveRebounds      = sofaStats.homeDefensiveRebounds,
+            awayDefensiveRebounds      = sofaStats.awayDefensiveRebounds,
+            homeOffensiveRebounds      = sofaStats.homeOffensiveRebounds,
+            awayOffensiveRebounds      = sofaStats.awayOffensiveRebounds,
+            homeAssists                = sofaStats.homeAssists,
+            awayAssists                = sofaStats.awayAssists,
+            homeTurnovers              = sofaStats.homeTurnovers,
+            awayTurnovers              = sofaStats.awayTurnovers,
+            homeSteals                 = sofaStats.homeSteals,
+            awaySteals                 = sofaStats.awaySteals,
+            homeBlocks                 = sofaStats.homeBlocks,
+            awayBlocks                 = sofaStats.awayBlocks,
+            homeTotalFouls             = sofaStats.homeTotalFouls,
+            awayTotalFouls             = sofaStats.awayTotalFouls,
+            homeTimeouts               = sofaStats.homeTimeouts,
+            awayTimeouts               = sofaStats.awayTimeouts,
+            homeMaxPointsInARow        = sofaStats.homeMaxPointsInARow,
+            awayMaxPointsInARow        = sofaStats.awayMaxPointsInARow,
+            homeTimeSpentInLeadSec     = sofaStats.homeTimeSpentInLeadSec,
+            awayTimeSpentInLeadSec     = sofaStats.awayTimeSpentInLeadSec,
+            homeLeadChanges            = sofaStats.homeLeadChanges,
+            awayLeadChanges            = sofaStats.awayLeadChanges,
+            homeBiggestLead            = sofaStats.homeBiggestLead,
+            awayBiggestLead            = sofaStats.awayBiggestLead,
         ))
     }
 

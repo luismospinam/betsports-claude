@@ -60,7 +60,7 @@ betplay:
     max-match-minute: 80
     # Only target genuine pre-match favorites (odds ≤ this value)
     # 1.55 ceiling: 72 bets at 57.7% win rate (+20.1% EV) vs 62 bets at 54.1% (+10% EV) at 1.50
-    max-baseline-odds: 1.55
+    max-baseline-odds: 1.45
     # Don't bet if market has given up (current odds above this)
     # Raised to 3.00: 2.50–2.99 DC is near break-even; ≥3.00 outright is +25% EV (5 bets)
     max-current-odds: 3.00
@@ -121,24 +121,24 @@ betplay:
 
     monitor:
       # 35% threshold: EV +49.4% vs +13.7% at 20% (analysis: basketball/findings.md §6)
-      odds-rise-threshold-pct: 35.0
+      odds-rise-threshold-pct: 30.0
       # Above this = collapse (injury, blowout in progress) — skip
       odds-rise-max-pct: 100.0
       # Max alerts per match
       max-alerts-per-match: 1
       # 1.40 cutoff: 1.31-1.40 band has 85.7% win rate; 1.41-1.50 has 0% ground-truth comeback (§5)
-      max-baseline-odds: 1.5
+      max-baseline-odds: 1.45
       # 3.00 is the sweet spot: EV +16.5% vs +13.7% at 4.00 (§7)
-      max-current-odds: 3.00
+      max-current-odds: 2.10
       # Must be actually trailing — deficit=0 (tied) is not a comeback scenario
       min-point-deficit: 1
       # Beyond 6 pts ground-truth comeback rate drops to 25%; edge too thin (§4)
-      max-point-deficit: 9
+      max-point-deficit: 6
       # QUARTER3 + QUARTER4 only.
       # 'HALFTIME' removed: this period_id never appears in Kambi data (Kambi uses QUARTER2 through the break).
       # 'QUARTER2' removed: 50% win vs 58.8% break-even at avg 1.70 odds → negative EV.
       # 'QUARTER4' added: 75% win on 4 placed bets, avg 2.18 odds.
-      bet-periods: "QUARTER3,QUARTER4"
+      bet-periods: "QUARTER2,QUARTER3,QUARTER4"
 
     scheduler:
       match-sync-ms: 14400000
